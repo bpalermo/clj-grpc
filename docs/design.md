@@ -133,6 +133,26 @@ container port `h2c`); the client preset is plaintext + wait-for-ready +
 keepalives — the activator-in-path, scale-from-zero posture where the first
 request must tolerate a pod that is still being summoned.
 
+## Cold start, and the native-image blocker
+
+Deploy-shaped AppCDS cuts time-to-first-RPC 2.9 s → 1.25 s (−57%); the
+`//bench:coldstart` harness measures spawn-to-first-success with a warm
+prober. rules_clj's own CDS rejection is build-action-specific (uncacheable
+archives poison action keys); in a container the archive is dumped against
+jars whose timestamps never move, so the objection does not transfer.
+
+Native-image is blocked, precisely: Clojure-compiled code initializes
+referenced classes eagerly (fn-class `<clinit>` → `RT.classForName`
+initialize=true) at namespace load — build time under
+`--initialize-at-build-time` — while Netty's shipped native-image metadata
+mandates run-time init for its native/Unsafe-touching classes, correctly.
+Moving Netty references out of `:import` into fn bodies (done; kept — it is
+semantics-neutral) eliminates most of the collision but not the class
+constants. The finishing design: move all Netty-referencing construction into
+leaf namespaces loaded via `requiring-resolve` at first call, marked
+initialize-at-run-time, with their classes registered for reachability. A
+contained project, banked until the cold-start payoff is demanded.
+
 ## Measured, not asserted
 
 Two benchmarks, both with always-on smoke tests so they cannot rot:

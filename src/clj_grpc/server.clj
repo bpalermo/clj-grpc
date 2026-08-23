@@ -51,9 +51,12 @@
   handlers block — that is the model — and grpc's default shared pool is sized
   for handlers that never do."
   (:require [clj-grpc.transport :as transport])
+  ;; NettyServerBuilder is fully-qualified, not imported: its <clinit> chains
+  ;; into Netty's event-loop classes (io.grpc.netty.Utils), and Clojure's
+  ;; eager import-time initialization would run that at image build under
+  ;; native-image. See transport.clj.
   (:import [io.grpc Server ServerInterceptor ServerServiceDefinition
             Status StatusRuntimeException]
-           [io.grpc.netty NettyServerBuilder]
            [io.grpc.protobuf.services HealthStatusManager ProtoReflectionServiceV1]
            [io.grpc.stub ServerCalls ServerCalls$BidiStreamingMethod
             ServerCalls$ClientStreamingMethod ServerCalls$ServerStreamingMethod
@@ -161,7 +164,7 @@
         transport (transport/resolve-transport
                    (if (and unix? (nil? transport)) :epoll transport))
         _         (transport/server-channel-type transport unix?) ; eager UDS/nio validation
-        builder   (doto (NettyServerBuilder/forAddress addr)
+        builder   (doto (io.grpc.netty.NettyServerBuilder/forAddress addr)
                     (.channelType (transport/server-channel-type transport unix?))
                     (.bossEventLoopGroup (transport/event-loop-group transport 1))
                     (.workerEventLoopGroup (transport/event-loop-group transport 0)))

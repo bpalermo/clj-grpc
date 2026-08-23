@@ -1,4 +1,4 @@
-load("@rules_clj//clojure:defs.bzl", "clj_binary", "clj_library", "clj_test")
+load("@rules_clj//clojure:defs.bzl", "clj_binary", "clj_library", "clj_native_binary", "clj_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -44,4 +44,53 @@ clj_test(
     name = "smoke_test",
     ns = "clj-grpc.bench-smoke-test",
     deps = [":smoke_test_lib"],
+)
+
+# ---------------------------------------------------------------------------
+# Cold start: time-to-first-RPC, the number Knative scale-from-zero pays.
+
+clj_library(
+    name = "coldstart_lib",
+    srcs = glob(["clj_grpc/coldstart/*.clj"]),
+    namespaces = [
+        "clj-grpc.coldstart.server",
+        "clj-grpc.coldstart.measure",
+    ],
+    strip_prefix = "bench",
+    deps = [
+        "//src:clj_grpc",
+        "//test:fixtures",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+# The subject: its _deploy.jar is what the arms launch.
+clj_binary(
+    name = "coldstart_server",
+    main_class = "clj_grpc.coldstart.server",
+    tags = ["manual"],
+    deps = [":coldstart_lib"],
+)
+
+# The harness; run with arm segments, see measure.clj docstring.
+clj_binary(
+    name = "coldstart",
+    main = "clj-grpc.coldstart.measure",
+    tags = ["manual"],
+    deps = [":coldstart_lib"],
+)
+
+# The native arm of the cold-start campaign. grpc-netty under native-image is
+# the known-hard part; this target exists to measure it or to document exactly
+# where it breaks.
+clj_native_binary(
+    name = "coldstart_native",
+    binary_name = "coldstart-server",
+    extra_args = [
+        "-H:+ReportExceptionStackTraces",
+    ],
+    jar = ":coldstart_server_deploy.jar",
+    tags = ["manual"],
 )
