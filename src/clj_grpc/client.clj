@@ -29,10 +29,13 @@
     :idle-timeout-ms  channel idle timeout
     :max-inbound-message-size  bytes
     :interceptors     [io.grpc.ClientInterceptor ...]
+    :executor         Executor for callbacks, or :direct (same sharp edge as
+                      the server: never block a direct callback)
     :default-service-config  map, e.g. retry policy (enables retries when set)"
   ^ManagedChannel
   [target {:keys [plaintext transport keepalive idle-timeout-ms
-                  max-inbound-message-size interceptors default-service-config]}]
+                  max-inbound-message-size interceptors default-service-config
+                  executor]}]
   (let [unix?     (or (and (map? target) (:unix target))
                       (and (string? target) (.startsWith ^String target "unix://")))
         transport (transport/resolve-transport
@@ -40,6 +43,9 @@
         builder   (if unix?
                     (NettyChannelBuilder/forAddress (transport/->address target))
                     (NettyChannelBuilder/forTarget ^String target))]
+    (cond
+      (= :direct executor) (.directExecutor builder)
+      executor (.executor builder ^java.util.concurrent.Executor executor))
     (.channelType builder (transport/client-channel-type transport unix?))
     (.eventLoopGroup builder (transport/event-loop-group transport 0))
     (if (or plaintext unix? (nil? plaintext))

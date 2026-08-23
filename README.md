@@ -8,7 +8,7 @@ code — plain functions in, protobuf Messages on the wire.
 
 ```clojure
 ;; deps.edn
-com.github.bpalermo/clj-grpc {:mvn/version "0.1.1"}
+com.github.bpalermo/clj-grpc {:mvn/version "0.1.2"}
 ```
 
 ## Serve
@@ -73,6 +73,21 @@ pin block, run the test.
 
 TLS: h2c needs none. For TLS, JDK SSL works out of the box via `:tls`;
 `netty-tcnative-boringssl-static 2.0.81.Final` is the optional OpenSSL add-on.
+
+## Performance posture
+
+Two measured levers, honest about their trade:
+
+- **`:executor :direct`** runs handlers on the Netty event loop: **−29% unary
+  latency** (265 → 187 µs loopback) for provably non-blocking handlers — and
+  the inverse under load, where the default virtual-thread executor wins by
+  ~9% (23,060 vs 21,133 calls/s at 32-way concurrency; `bazel run //bench:run
+  -- load` reproduces both). A blocking handler on a direct executor stalls
+  every connection on that loop. Default stays virtual threads.
+- **Streaming beats tuning by two orders of magnitude.** Every unary call
+  costs ~190–275 µs of machinery; serializing an entire 20-row message costs
+  ~7 µs. If a workload makes N small calls where one stream would do, no
+  executor choice compares to fixing that.
 
 ## Against REST
 
