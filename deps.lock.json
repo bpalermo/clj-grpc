@@ -6,6 +6,67 @@
   ],
   "artifacts": [
     {
+      "coordinates": "com.cnuernber/charred:1.037",
+      "target": "com_cnuernber_charred",
+      "path": "com/cnuernber/charred/1.037/charred-1.037.jar",
+      "sha256": "eb8d003309209a6940b3173ca479f766aa4664964ade363e69746ab78573c46a",
+      "deps": []
+    },
+    {
+      "coordinates": "com.cognitect/transit-clj:1.0.333",
+      "target": "com_cognitect_transit_clj",
+      "path": "com/cognitect/transit-clj/1.0.333/transit-clj-1.0.333.jar",
+      "sha256": "8e0352a002cf95ddeb52770b950c1eb5ea96b7351fce39e0fee93e21ca63befb",
+      "deps": [
+        "com_cognitect_transit_java"
+      ]
+    },
+    {
+      "coordinates": "com.cognitect/transit-java:1.0.371",
+      "target": "com_cognitect_transit_java",
+      "path": "com/cognitect/transit-java/1.0.371/transit-java-1.0.371.jar",
+      "sha256": "9267acceaa6bc8e89d5cbf65f847838647876d721af208324e38cd0040b23696",
+      "deps": [
+        "javax_xml_bind_jaxb_api",
+        "org_msgpack_msgpack"
+      ]
+    },
+    {
+      "coordinates": "com.fasterxml.jackson.core/jackson-annotations:2.18.2",
+      "target": "com_fasterxml_jackson_core_jackson_annotations",
+      "path": "com/fasterxml/jackson/core/jackson-annotations/2.18.2/jackson-annotations-2.18.2.jar",
+      "sha256": "581bd61000ef7648943f781ca05689e56d03f6052748365a8e2b3a9b5d3fa32f",
+      "deps": []
+    },
+    {
+      "coordinates": "com.fasterxml.jackson.core/jackson-core:2.18.2",
+      "target": "com_fasterxml_jackson_core_jackson_core",
+      "path": "com/fasterxml/jackson/core/jackson-core/2.18.2/jackson-core-2.18.2.jar",
+      "sha256": "d8054ae7c0d1c2d2f55d28e46026ebe5892881f3fab5f439233184381c3b4a1f",
+      "deps": []
+    },
+    {
+      "coordinates": "com.fasterxml.jackson.core/jackson-databind:2.18.2",
+      "target": "com_fasterxml_jackson_core_jackson_databind",
+      "path": "com/fasterxml/jackson/core/jackson-databind/2.18.2/jackson-databind-2.18.2.jar",
+      "sha256": "4b364e6850dc89172fcf1d4dd26b8ff5488eda44ff4657e22dd265203dd5ab3c",
+      "deps": [
+        "com_fasterxml_jackson_core_jackson_annotations",
+        "com_fasterxml_jackson_core_jackson_core"
+      ]
+    },
+    {
+      "coordinates": "com.fasterxml.jackson.datatype/jackson-datatype-jsr310:2.18.2",
+      "target": "com_fasterxml_jackson_datatype_jackson_datatype_jsr310",
+      "path": "com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.18.2/jackson-datatype-jsr310-2.18.2.jar",
+      "sha256": "e2d202d4606e23aeaf8a5a9632db06f5fefd5b63d251c3f503f9faaa78530e5c",
+      "deps": [
+        "com_fasterxml_jackson_core_jackson_annotations",
+        "com_fasterxml_jackson_core_jackson_core",
+        "com_fasterxml_jackson_core_jackson_databind"
+      ]
+    },
+    {
       "coordinates": "com.github.bpalermo/clj-protobuf:0.1.5",
       "target": "com_github_bpalermo_clj_protobuf",
       "path": "com/github/bpalermo/clj-protobuf/0.1.5/clj-protobuf-0.1.5.jar",
@@ -97,6 +158,48 @@
       "deps": [
         "com_google_code_findbugs_jsr305"
       ]
+    },
+    {
+      "coordinates": "com.googlecode.json-simple/json-simple:1.1.1",
+      "target": "com_googlecode_json_simple_json_simple",
+      "path": "com/googlecode/json-simple/json-simple/1.1.1/json-simple-1.1.1.jar",
+      "sha256": "4e69696892b88b41c55d49ab2fdcc21eead92bf54acc588c0050596c3b75199c",
+      "deps": []
+    },
+    {
+      "coordinates": "commons-codec/commons-codec:1.19.0",
+      "target": "commons_codec_commons_codec",
+      "path": "commons-codec/commons-codec/1.19.0/commons-codec-1.19.0.jar",
+      "sha256": "5c3881e4f556855e9c532927ee0c9dfde94cc66760d5805c031a59887070af5f",
+      "deps": []
+    },
+    {
+      "coordinates": "commons-io/commons-io:2.20.0",
+      "target": "commons_io_commons_io",
+      "path": "commons-io/commons-io/2.20.0/commons-io-2.20.0.jar",
+      "sha256": "df90bba0fe3cb586b7f164e78fe8f8f4da3f2dd5c27fa645f888100ccc25dd72",
+      "deps": []
+    },
+    {
+      "coordinates": "criterium/criterium:0.4.6",
+      "target": "criterium_criterium",
+      "path": "criterium/criterium/0.4.6/criterium-0.4.6.jar",
+      "sha256": "af5e146f109977d5cd035bc0ce394ec9279b232490069f04aec68ee4c8bc158e",
+      "deps": []
+    },
+    {
+      "coordinates": "crypto-equality/crypto-equality:1.0.1",
+      "target": "crypto_equality_crypto_equality",
+      "path": "crypto-equality/crypto-equality/1.0.1/crypto-equality-1.0.1.jar",
+      "sha256": "ee15cc0b76dcf73f8fc86d02e9effed7160a8a6b40b2f0e9de72e3dd25ed4bdf",
+      "deps": []
+    },
+    {
+      "coordinates": "crypto-random/crypto-random:1.2.1",
+      "target": "crypto_random_crypto_random",
+      "path": "crypto-random/crypto-random/1.2.1/crypto-random-1.2.1.jar",
+      "sha256": "5c128846d7b66d53c5e9726773b872f7e02844ff651a996a5e3452a1523ae52c",
+      "deps": []
     },
     {
       "coordinates": "io.grpc/grpc-api:1.83.1",
@@ -330,10 +433,258 @@
       "deps": []
     },
     {
+      "coordinates": "io.opentelemetry/opentelemetry-api:1.55.0",
+      "target": "io_opentelemetry_opentelemetry_api",
+      "path": "io/opentelemetry/opentelemetry-api/1.55.0/opentelemetry-api-1.55.0.jar",
+      "sha256": "387b4bf98631fc2ede9470879a8ff28dd8c5cb2d3dcf5b6ef77f5ee2bdb7b4f1",
+      "deps": [
+        "io_opentelemetry_opentelemetry_context"
+      ]
+    },
+    {
+      "coordinates": "io.opentelemetry/opentelemetry-common:1.55.0",
+      "target": "io_opentelemetry_opentelemetry_common",
+      "path": "io/opentelemetry/opentelemetry-common/1.55.0/opentelemetry-common-1.55.0.jar",
+      "sha256": "fca14bb87309d1193347d179b91c63045fa05a856f1fbeec6ef61c4a7f81b227",
+      "deps": []
+    },
+    {
+      "coordinates": "io.opentelemetry/opentelemetry-context:1.55.0",
+      "target": "io_opentelemetry_opentelemetry_context",
+      "path": "io/opentelemetry/opentelemetry-context/1.55.0/opentelemetry-context-1.55.0.jar",
+      "sha256": "f34a4718b70446ec462703ced5cc2c9ad4c9b7c69dcb41d0f032ba51c625a3dd",
+      "deps": [
+        "io_opentelemetry_opentelemetry_common"
+      ]
+    },
+    {
+      "coordinates": "io.pedestal/pedestal.common:0.8.1",
+      "target": "io_pedestal_pedestal_common",
+      "path": "io/pedestal/pedestal.common/0.8.1/pedestal.common-0.8.1.jar",
+      "sha256": "d53251083abbba8a2e57a4bfdb3b5017d7c2c8af2d4a04552762bbe790385129",
+      "deps": [
+        "org_clj_commons_pretty"
+      ]
+    },
+    {
+      "coordinates": "io.pedestal/pedestal.interceptor:0.8.1",
+      "target": "io_pedestal_pedestal_interceptor",
+      "path": "io/pedestal/pedestal.interceptor/0.8.1/pedestal.interceptor-0.8.1.jar",
+      "sha256": "a0da3cc0c9bd42042a35e08f2bdaf190e11331bf2759bde97f019914c5fea91d",
+      "deps": [
+        "io_pedestal_pedestal_common",
+        "io_pedestal_pedestal_log",
+        "org_clj_commons_pretty",
+        "org_clojure_core_async"
+      ]
+    },
+    {
+      "coordinates": "io.pedestal/pedestal.jetty:0.8.1",
+      "target": "io_pedestal_pedestal_jetty",
+      "path": "io/pedestal/pedestal.jetty/0.8.1/pedestal.jetty-0.8.1.jar",
+      "sha256": "171526c59265aefd9d1e7624ae9ab95defeb3f8659f00083750967529fb99762",
+      "deps": [
+        "io_pedestal_pedestal_log",
+        "io_pedestal_pedestal_servlet",
+        "org_eclipse_jetty_ee10_jetty_ee10_servlet",
+        "org_eclipse_jetty_ee10_websocket_jetty_ee10_websocket_jakarta_server",
+        "org_eclipse_jetty_http2_jetty_http2_server",
+        "org_eclipse_jetty_jetty_alpn_server",
+        "org_eclipse_jetty_jetty_server"
+      ]
+    },
+    {
+      "coordinates": "io.pedestal/pedestal.log:0.8.1",
+      "target": "io_pedestal_pedestal_log",
+      "path": "io/pedestal/pedestal.log/0.8.1/pedestal.log-0.8.1.jar",
+      "sha256": "ec3606df8e3bac8f70b3ff0cc9970e2a9c5eea8bdf78bea6934433df70008b7d",
+      "deps": [
+        "io_pedestal_pedestal_common",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "io.pedestal/pedestal.route:0.8.1",
+      "target": "io_pedestal_pedestal_route",
+      "path": "io/pedestal/pedestal.route/0.8.1/pedestal.route-0.8.1.jar",
+      "sha256": "cc22f80374ec77d4e492dfb6ef772cd07cff98db4d916a332462352123d9c9ba",
+      "deps": [
+        "io_pedestal_pedestal_interceptor",
+        "io_pedestal_pedestal_log",
+        "org_clj_commons_pretty",
+        "org_clojure_core_async"
+      ]
+    },
+    {
+      "coordinates": "io.pedestal/pedestal.service:0.8.1",
+      "target": "io_pedestal_pedestal_service",
+      "path": "io/pedestal/pedestal.service/0.8.1/pedestal.service-0.8.1.jar",
+      "sha256": "08ee632c11a687786db31c9451f6f9a2e5396f48aa72eb7872d739abf73756a9",
+      "deps": [
+        "com_cnuernber_charred",
+        "com_cognitect_transit_clj",
+        "commons_codec_commons_codec",
+        "crypto_equality_crypto_equality",
+        "crypto_random_crypto_random",
+        "io_pedestal_pedestal_interceptor",
+        "io_pedestal_pedestal_log",
+        "io_pedestal_pedestal_route",
+        "io_pedestal_pedestal_telemetry",
+        "org_clojure_core_async",
+        "org_clojure_tools_reader",
+        "ring_ring_core"
+      ]
+    },
+    {
+      "coordinates": "io.pedestal/pedestal.servlet:0.8.1",
+      "target": "io_pedestal_pedestal_servlet",
+      "path": "io/pedestal/pedestal.servlet/0.8.1/pedestal.servlet-0.8.1.jar",
+      "sha256": "956b4ed1f172d97ba2325cde4fae617c21d1fd3479bcab216e03449eaf1821a4",
+      "deps": [
+        "com_cognitect_transit_clj",
+        "commons_codec_commons_codec",
+        "crypto_equality_crypto_equality",
+        "crypto_random_crypto_random",
+        "io_pedestal_pedestal_interceptor",
+        "io_pedestal_pedestal_log",
+        "io_pedestal_pedestal_route",
+        "io_pedestal_pedestal_telemetry",
+        "org_clojure_core_async",
+        "org_clojure_tools_reader",
+        "ring_ring_core"
+      ]
+    },
+    {
+      "coordinates": "io.pedestal/pedestal.telemetry:0.8.1",
+      "target": "io_pedestal_pedestal_telemetry",
+      "path": "io/pedestal/pedestal.telemetry/0.8.1/pedestal.telemetry-0.8.1.jar",
+      "sha256": "468b14bcdb312c4dbaf934e86a2eae4fbe5c6122998b96cf8bf2de0bdb3a4854",
+      "deps": [
+        "io_opentelemetry_opentelemetry_api",
+        "io_pedestal_pedestal_common"
+      ]
+    },
+    {
       "coordinates": "io.perfmark/perfmark-api:0.27.0",
       "target": "io_perfmark_perfmark_api",
       "path": "io/perfmark/perfmark-api/0.27.0/perfmark-api-0.27.0.jar",
       "sha256": "c7b478503ec524e55df19b424d46d27c8a68aeb801664fadd4f069b71f52d0f6",
+      "deps": []
+    },
+    {
+      "coordinates": "jakarta.annotation/jakarta.annotation-api:2.1.1",
+      "target": "jakarta_annotation_jakarta_annotation_api",
+      "path": "jakarta/annotation/jakarta.annotation-api/2.1.1/jakarta.annotation-api-2.1.1.jar",
+      "sha256": "5f65fdaf424eee2b55e1d882ba9bb376be93fb09b37b808be6e22e8851c909fe",
+      "deps": []
+    },
+    {
+      "coordinates": "jakarta.el/jakarta.el-api:5.0.0",
+      "target": "jakarta_el_jakarta_el_api",
+      "path": "jakarta/el/jakarta.el-api/5.0.0/jakarta.el-api-5.0.0.jar",
+      "sha256": "57b822380207900f5145c2a687384c50fd41495d388a235791d96ae3b9bfd36d",
+      "deps": []
+    },
+    {
+      "coordinates": "jakarta.enterprise/jakarta.enterprise.cdi-api:4.0.1",
+      "target": "jakarta_enterprise_jakarta_enterprise_cdi_api",
+      "path": "jakarta/enterprise/jakarta.enterprise.cdi-api/4.0.1/jakarta.enterprise.cdi-api-4.0.1.jar",
+      "sha256": "beaf74c4f2618189309e3f4a09c43effab633dd96aa1f6dc58a6ba7ee0042717",
+      "deps": [
+        "jakarta_el_jakarta_el_api",
+        "jakarta_enterprise_jakarta_enterprise_lang_model",
+        "jakarta_inject_jakarta_inject_api",
+        "jakarta_interceptor_jakarta_interceptor_api"
+      ]
+    },
+    {
+      "coordinates": "jakarta.enterprise/jakarta.enterprise.lang-model:4.0.1",
+      "target": "jakarta_enterprise_jakarta_enterprise_lang_model",
+      "path": "jakarta/enterprise/jakarta.enterprise.lang-model/4.0.1/jakarta.enterprise.lang-model-4.0.1.jar",
+      "sha256": "53acafe65b6ef0195fa1b8a0ef2650e5aa024c32cb4059c4df372d6b32089cd3",
+      "deps": []
+    },
+    {
+      "coordinates": "jakarta.inject/jakarta.inject-api:2.0.1",
+      "target": "jakarta_inject_jakarta_inject_api",
+      "path": "jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar",
+      "sha256": "f7dc98062fccf14126abb751b64fab12c312566e8cbdc8483598bffcea93af7c",
+      "deps": []
+    },
+    {
+      "coordinates": "jakarta.interceptor/jakarta.interceptor-api:2.1.0",
+      "target": "jakarta_interceptor_jakarta_interceptor_api",
+      "path": "jakarta/interceptor/jakarta.interceptor-api/2.1.0/jakarta.interceptor-api-2.1.0.jar",
+      "sha256": "ef787d3f713fc6ff4f02cd4b0dbed08f93d8af3400c90cbb43fb4b5c0583710b",
+      "deps": []
+    },
+    {
+      "coordinates": "jakarta.servlet/jakarta.servlet-api:6.0.0",
+      "target": "jakarta_servlet_jakarta_servlet_api",
+      "path": "jakarta/servlet/jakarta.servlet-api/6.0.0/jakarta.servlet-api-6.0.0.jar",
+      "sha256": "c034eb1afb158987dbb53a5fea0cadf611c8dae8daadd59c44d9d5ab70129cef",
+      "deps": []
+    },
+    {
+      "coordinates": "jakarta.transaction/jakarta.transaction-api:2.0.1",
+      "target": "jakarta_transaction_jakarta_transaction_api",
+      "path": "jakarta/transaction/jakarta.transaction-api/2.0.1/jakarta.transaction-api-2.0.1.jar",
+      "sha256": "50c0a7c760c13ae6c042acf182b28f0047413db95b4636fb8879bcffab5ba875",
+      "deps": []
+    },
+    {
+      "coordinates": "jakarta.websocket/jakarta.websocket-api:2.1.1",
+      "target": "jakarta_websocket_jakarta_websocket_api",
+      "path": "jakarta/websocket/jakarta.websocket-api/2.1.1/jakarta.websocket-api-2.1.1.jar",
+      "sha256": "beadb92c26d04da653f6d2db2532b549b7a0dbe59c6e22c23e55bd03617f0120",
+      "deps": []
+    },
+    {
+      "coordinates": "jakarta.websocket/jakarta.websocket-client-api:2.1.1",
+      "target": "jakarta_websocket_jakarta_websocket_client_api",
+      "path": "jakarta/websocket/jakarta.websocket-client-api/2.1.1/jakarta.websocket-client-api-2.1.1.jar",
+      "sha256": "e8fe8c1dff948385a461dbc85dec5467cbe350f065ec1a0f3bfed53b79e7b102",
+      "deps": []
+    },
+    {
+      "coordinates": "javax.activation/javax.activation-api:1.2.0",
+      "target": "javax_activation_javax_activation_api",
+      "path": "javax/activation/javax.activation-api/1.2.0/javax.activation-api-1.2.0.jar",
+      "sha256": "43fdef0b5b6ceb31b0424b208b930c74ab58fac2ceeb7b3f6fd3aeb8b5ca4393",
+      "deps": []
+    },
+    {
+      "coordinates": "javax.xml.bind/jaxb-api:2.4.0-b180830.0359",
+      "target": "javax_xml_bind_jaxb_api",
+      "path": "javax/xml/bind/jaxb-api/2.4.0-b180830.0359/jaxb-api-2.4.0-b180830.0359.jar",
+      "sha256": "56b9e9702753763007435162ea788055efcfefc86ab920f032c0411dc547b836",
+      "deps": [
+        "javax_activation_javax_activation_api"
+      ]
+    },
+    {
+      "coordinates": "metosin/jsonista:0.3.13",
+      "target": "metosin_jsonista",
+      "path": "metosin/jsonista/0.3.13/jsonista-0.3.13.jar",
+      "sha256": "b79b7df3b184adf29d01f45c5a505a13883e89c00792d776946c15c2f75421fb",
+      "deps": [
+        "com_fasterxml_jackson_core_jackson_core",
+        "com_fasterxml_jackson_core_jackson_databind",
+        "com_fasterxml_jackson_datatype_jackson_datatype_jsr310"
+      ]
+    },
+    {
+      "coordinates": "org.apache.commons/commons-fileupload2-core:2.0.0-M4",
+      "target": "org_apache_commons_commons_fileupload2_core",
+      "path": "org/apache/commons/commons-fileupload2-core/2.0.0-M4/commons-fileupload2-core-2.0.0-M4.jar",
+      "sha256": "d285cd8cdde3d9466208b37c7750454b0b280ea773b19b050ae1e2ddb09e6991",
+      "deps": []
+    },
+    {
+      "coordinates": "org.clj-commons/pretty:3.6.7",
+      "target": "org_clj_commons_pretty",
+      "path": "org/clj-commons/pretty/3.6.7/pretty-3.6.7.jar",
+      "sha256": "e3c5ed5b772d7bb3d6d2c459e6c97adb3625e412879e51e31c5e109dc8be9347",
       "deps": []
     },
     {
@@ -347,10 +698,44 @@
       ]
     },
     {
+      "coordinates": "org.clojure/core.async:1.8.741",
+      "target": "org_clojure_core_async",
+      "path": "org/clojure/core.async/1.8.741/core.async-1.8.741.jar",
+      "sha256": "288489a4f0e580f43e1913cba842b32959ef01e2d1bc3a01db2e97c79c9c655a",
+      "deps": [
+        "org_clojure_tools_analyzer_jvm"
+      ]
+    },
+    {
+      "coordinates": "org.clojure/core.cache:1.1.234",
+      "target": "org_clojure_core_cache",
+      "path": "org/clojure/core.cache/1.1.234/core.cache-1.1.234.jar",
+      "sha256": "ba9071044edb7b009288b2c5f800a7dcd918b0f1725c5ba800469238df972f63",
+      "deps": [
+        "org_clojure_data_priority_map"
+      ]
+    },
+    {
+      "coordinates": "org.clojure/core.memoize:1.1.266",
+      "target": "org_clojure_core_memoize",
+      "path": "org/clojure/core.memoize/1.1.266/core.memoize-1.1.266.jar",
+      "sha256": "5792a21d6d90a1f5e68d4a10f65607aa21f6c484eb9d1a421cefc1f8ac26f18e",
+      "deps": [
+        "org_clojure_core_cache"
+      ]
+    },
+    {
       "coordinates": "org.clojure/core.specs.alpha:0.4.74",
       "target": "org_clojure_core_specs_alpha",
       "path": "org/clojure/core.specs.alpha/0.4.74/core.specs.alpha-0.4.74.jar",
       "sha256": "eb73ac08cf49ba840c88ba67beef11336ca554333d9408808d78946e0feb9ddb",
+      "deps": []
+    },
+    {
+      "coordinates": "org.clojure/data.priority-map:1.2.0",
+      "target": "org_clojure_data_priority_map",
+      "path": "org/clojure/data.priority-map/1.2.0/data.priority-map-1.2.0.jar",
+      "sha256": "a4523626a1ccc4fce0d1efe6df16897fc3e34b58738f0462e4536af17dea02f0",
       "deps": []
     },
     {
@@ -361,10 +746,345 @@
       "deps": []
     },
     {
+      "coordinates": "org.clojure/tools.analyzer:1.2.0",
+      "target": "org_clojure_tools_analyzer",
+      "path": "org/clojure/tools.analyzer/1.2.0/tools.analyzer-1.2.0.jar",
+      "sha256": "7801a5a7ef4fd77f560c30a638594447c3aa71ee78b7f088553b7919bd0033bb",
+      "deps": []
+    },
+    {
+      "coordinates": "org.clojure/tools.analyzer.jvm:1.3.2",
+      "target": "org_clojure_tools_analyzer_jvm",
+      "path": "org/clojure/tools.analyzer.jvm/1.3.2/tools.analyzer.jvm-1.3.2.jar",
+      "sha256": "d8a2d59205a21281f305f3d5439ffc302182c307f9be962a76ce814a6620693d",
+      "deps": [
+        "org_clojure_core_memoize",
+        "org_clojure_tools_analyzer"
+      ]
+    },
+    {
+      "coordinates": "org.clojure/tools.reader:1.5.2",
+      "target": "org_clojure_tools_reader",
+      "path": "org/clojure/tools.reader/1.5.2/tools.reader-1.5.2.jar",
+      "sha256": "cb96ed0efdf0b8bc362632cb74067ef225f6b03f3f478c8ba44182f6a17a37b6",
+      "deps": []
+    },
+    {
       "coordinates": "org.codehaus.mojo/animal-sniffer-annotations:1.27",
       "target": "org_codehaus_mojo_animal_sniffer_annotations",
       "path": "org/codehaus/mojo/animal-sniffer-annotations/1.27/animal-sniffer-annotations-1.27.jar",
       "sha256": "cfd7e51a828fe6b98bc0dbb99e34900c9e9012322cb9ddd57fd8dd0b02da5e27",
+      "deps": []
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-alpn-client:12.0.29",
+      "target": "org_eclipse_jetty_jetty_alpn_client",
+      "path": "org/eclipse/jetty/jetty-alpn-client/12.0.29/jetty-alpn-client-12.0.29.jar",
+      "sha256": "cb235210b5ae11fa3c70133bb494e90c5ec003f2857c0bbd636f745293e2d1e8",
+      "deps": [
+        "org_eclipse_jetty_jetty_io",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-alpn-server:12.0.29",
+      "target": "org_eclipse_jetty_jetty_alpn_server",
+      "path": "org/eclipse/jetty/jetty-alpn-server/12.0.29/jetty-alpn-server-12.0.29.jar",
+      "sha256": "6eb29e68c8fe36326b77c00c263617b78570ff7ab818a3eaca1ae061ef279ebc",
+      "deps": [
+        "org_eclipse_jetty_jetty_server",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-client:12.0.29",
+      "target": "org_eclipse_jetty_jetty_client",
+      "path": "org/eclipse/jetty/jetty-client/12.0.29/jetty-client-12.0.29.jar",
+      "sha256": "0d41d902044d6f17a453216485ed537393a9d5b886f18e8bda8b20797b104b9a",
+      "deps": [
+        "org_eclipse_jetty_jetty_alpn_client",
+        "org_eclipse_jetty_jetty_http",
+        "org_eclipse_jetty_jetty_io",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-ee:12.0.29",
+      "target": "org_eclipse_jetty_jetty_ee",
+      "path": "org/eclipse/jetty/jetty-ee/12.0.29/jetty-ee-12.0.29.jar",
+      "sha256": "71e2ced8c34bda454d0dbeaf92775aa72936ffd25296b7196c4905312460e9d5",
+      "deps": [
+        "org_eclipse_jetty_jetty_server",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-http:12.0.29",
+      "target": "org_eclipse_jetty_jetty_http",
+      "path": "org/eclipse/jetty/jetty-http/12.0.29/jetty-http-12.0.29.jar",
+      "sha256": "6b7d24b4774aca8bc85ed7a465407878c474efe855970e8536b64ffc2c34b828",
+      "deps": [
+        "org_eclipse_jetty_jetty_io",
+        "org_eclipse_jetty_jetty_util",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-io:12.0.29",
+      "target": "org_eclipse_jetty_jetty_io",
+      "path": "org/eclipse/jetty/jetty-io/12.0.29/jetty-io-12.0.29.jar",
+      "sha256": "361817aedbc3a762ee9d0ee49bb03428af6784e114a0ac1939194c630ba7a5c2",
+      "deps": [
+        "org_eclipse_jetty_jetty_util",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-jndi:12.0.29",
+      "target": "org_eclipse_jetty_jetty_jndi",
+      "path": "org/eclipse/jetty/jetty-jndi/12.0.29/jetty-jndi-12.0.29.jar",
+      "sha256": "c7cea71afaeeca8881c36de4caa73189c31872d0123feb2b3a4544b2618ae45c",
+      "deps": [
+        "org_eclipse_jetty_jetty_util",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-plus:12.0.29",
+      "target": "org_eclipse_jetty_jetty_plus",
+      "path": "org/eclipse/jetty/jetty-plus/12.0.29/jetty-plus-12.0.29.jar",
+      "sha256": "2ff76c1819937dea66283c6cc446f4f3a69490b34c5c043e4fa09c751ebc6b21",
+      "deps": [
+        "org_eclipse_jetty_jetty_security",
+        "org_eclipse_jetty_jetty_util",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-security:12.0.29",
+      "target": "org_eclipse_jetty_jetty_security",
+      "path": "org/eclipse/jetty/jetty-security/12.0.29/jetty-security-12.0.29.jar",
+      "sha256": "c4f49a03968000bc4a43f864cfd53a6736c7821af945e05059c98fb8a9e7a9d2",
+      "deps": [
+        "org_eclipse_jetty_jetty_server",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-server:12.0.29",
+      "target": "org_eclipse_jetty_jetty_server",
+      "path": "org/eclipse/jetty/jetty-server/12.0.29/jetty-server-12.0.29.jar",
+      "sha256": "5aa066639f8f2c33dbd840b201682921e34aacd08c596a09ea978b3e87995e3a",
+      "deps": [
+        "org_eclipse_jetty_jetty_http",
+        "org_eclipse_jetty_jetty_io",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-session:12.0.29",
+      "target": "org_eclipse_jetty_jetty_session",
+      "path": "org/eclipse/jetty/jetty-session/12.0.29/jetty-session-12.0.29.jar",
+      "sha256": "0f73aa46fc74361d9ec108491afc498c523014d7bd04a89d790a6753606a207e",
+      "deps": [
+        "org_eclipse_jetty_jetty_server",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-util:12.0.29",
+      "target": "org_eclipse_jetty_jetty_util",
+      "path": "org/eclipse/jetty/jetty-util/12.0.29/jetty-util-12.0.29.jar",
+      "sha256": "4445452799f9fa04afcc4062df0538fc18929513efb164498e6acd8a9a4da717",
+      "deps": [
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty/jetty-xml:12.0.29",
+      "target": "org_eclipse_jetty_jetty_xml",
+      "path": "org/eclipse/jetty/jetty-xml/12.0.29/jetty-xml-12.0.29.jar",
+      "sha256": "a7dcd68da6b1bd6d33c5072cc45024268ffe4ff05c9af5eed7e968eb041d6271",
+      "deps": [
+        "org_eclipse_jetty_jetty_util",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.ee10/jetty-ee10-annotations:12.0.29",
+      "target": "org_eclipse_jetty_ee10_jetty_ee10_annotations",
+      "path": "org/eclipse/jetty/ee10/jetty-ee10-annotations/12.0.29/jetty-ee10-annotations-12.0.29.jar",
+      "sha256": "1ff3fa0291391e38daba2acd7e28b9e68173408fdf0c2d559bec7d7835148b29",
+      "deps": [
+        "jakarta_annotation_jakarta_annotation_api",
+        "jakarta_servlet_jakarta_servlet_api",
+        "org_eclipse_jetty_ee10_jetty_ee10_plus",
+        "org_eclipse_jetty_ee10_jetty_ee10_webapp",
+        "org_ow2_asm_asm",
+        "org_ow2_asm_asm_commons",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.ee10/jetty-ee10-plus:12.0.29",
+      "target": "org_eclipse_jetty_ee10_jetty_ee10_plus",
+      "path": "org/eclipse/jetty/ee10/jetty-ee10-plus/12.0.29/jetty-ee10-plus-12.0.29.jar",
+      "sha256": "2886c3ff9efd3d99711abfa2e9c2c6a1c7b7cb1662b41c991005f566d20be671",
+      "deps": [
+        "jakarta_enterprise_jakarta_enterprise_cdi_api",
+        "jakarta_enterprise_jakarta_enterprise_lang_model",
+        "jakarta_interceptor_jakarta_interceptor_api",
+        "jakarta_transaction_jakarta_transaction_api",
+        "org_eclipse_jetty_ee10_jetty_ee10_webapp",
+        "org_eclipse_jetty_jetty_jndi",
+        "org_eclipse_jetty_jetty_plus",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.ee10/jetty-ee10-servlet:12.0.29",
+      "target": "org_eclipse_jetty_ee10_jetty_ee10_servlet",
+      "path": "org/eclipse/jetty/ee10/jetty-ee10-servlet/12.0.29/jetty-ee10-servlet-12.0.29.jar",
+      "sha256": "4cfa47e12239e67e7e130fbff9302c25101cb3c2637e000934a11061aad6bf54",
+      "deps": [
+        "jakarta_servlet_jakarta_servlet_api",
+        "org_eclipse_jetty_jetty_security",
+        "org_eclipse_jetty_jetty_server",
+        "org_eclipse_jetty_jetty_session",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.ee10/jetty-ee10-webapp:12.0.29",
+      "target": "org_eclipse_jetty_ee10_jetty_ee10_webapp",
+      "path": "org/eclipse/jetty/ee10/jetty-ee10-webapp/12.0.29/jetty-ee10-webapp-12.0.29.jar",
+      "sha256": "9d12029d090ccff4a978ce33d25aa9a0d942f37cdc22d1dbf14fff9cf722df62",
+      "deps": [
+        "org_eclipse_jetty_ee10_jetty_ee10_servlet",
+        "org_eclipse_jetty_jetty_ee",
+        "org_eclipse_jetty_jetty_session",
+        "org_eclipse_jetty_jetty_xml",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.ee10.websocket/jetty-ee10-websocket-jakarta-client:12.0.29",
+      "target": "org_eclipse_jetty_ee10_websocket_jetty_ee10_websocket_jakarta_client",
+      "path": "org/eclipse/jetty/ee10/websocket/jetty-ee10-websocket-jakarta-client/12.0.29/jetty-ee10-websocket-jakarta-client-12.0.29.jar",
+      "sha256": "c23a97f992f6773ee577f781c2314f14c2add2a9004edfff5de487c7278d4749",
+      "deps": [
+        "jakarta_websocket_jakarta_websocket_api",
+        "jakarta_websocket_jakarta_websocket_client_api",
+        "org_eclipse_jetty_ee10_websocket_jetty_ee10_websocket_jakarta_common",
+        "org_eclipse_jetty_jetty_client",
+        "org_eclipse_jetty_websocket_jetty_websocket_core_client"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.ee10.websocket/jetty-ee10-websocket-jakarta-common:12.0.29",
+      "target": "org_eclipse_jetty_ee10_websocket_jetty_ee10_websocket_jakarta_common",
+      "path": "org/eclipse/jetty/ee10/websocket/jetty-ee10-websocket-jakarta-common/12.0.29/jetty-ee10-websocket-jakarta-common-12.0.29.jar",
+      "sha256": "d2425133b3c0cddf036ee61b5ddd8220f3f8627a01db635ea830cf59f0fe2181",
+      "deps": [
+        "jakarta_websocket_jakarta_websocket_api",
+        "jakarta_websocket_jakarta_websocket_client_api",
+        "org_eclipse_jetty_websocket_jetty_websocket_core_client",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.ee10.websocket/jetty-ee10-websocket-jakarta-server:12.0.29",
+      "target": "org_eclipse_jetty_ee10_websocket_jetty_ee10_websocket_jakarta_server",
+      "path": "org/eclipse/jetty/ee10/websocket/jetty-ee10-websocket-jakarta-server/12.0.29/jetty-ee10-websocket-jakarta-server-12.0.29.jar",
+      "sha256": "088faae0a2158901cea54e271e87b95d130ab34f347a6485ae43c0a1b99deabe",
+      "deps": [
+        "jakarta_websocket_jakarta_websocket_api",
+        "org_eclipse_jetty_ee10_jetty_ee10_annotations",
+        "org_eclipse_jetty_ee10_websocket_jetty_ee10_websocket_jakarta_client",
+        "org_eclipse_jetty_ee10_websocket_jetty_ee10_websocket_servlet",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.ee10.websocket/jetty-ee10-websocket-servlet:12.0.29",
+      "target": "org_eclipse_jetty_ee10_websocket_jetty_ee10_websocket_servlet",
+      "path": "org/eclipse/jetty/ee10/websocket/jetty-ee10-websocket-servlet/12.0.29/jetty-ee10-websocket-servlet-12.0.29.jar",
+      "sha256": "7803db009725671cc6964a283018403f7664d4d51e3632d72f5fb214f12be238",
+      "deps": [
+        "org_eclipse_jetty_ee10_jetty_ee10_servlet",
+        "org_eclipse_jetty_websocket_jetty_websocket_core_server",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.http2/jetty-http2-common:12.0.29",
+      "target": "org_eclipse_jetty_http2_jetty_http2_common",
+      "path": "org/eclipse/jetty/http2/jetty-http2-common/12.0.29/jetty-http2-common-12.0.29.jar",
+      "sha256": "3a848d5a5429dabcd236b0093964e4a9a9b6c3104d97a4fe8a2c1a6e291b5d38",
+      "deps": [
+        "org_eclipse_jetty_http2_jetty_http2_hpack",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.http2/jetty-http2-hpack:12.0.29",
+      "target": "org_eclipse_jetty_http2_jetty_http2_hpack",
+      "path": "org/eclipse/jetty/http2/jetty-http2-hpack/12.0.29/jetty-http2-hpack-12.0.29.jar",
+      "sha256": "b5a8b0529cde46773f2c7fefc5ebf6c2d74fd43135643c3219ce231fa5158f37",
+      "deps": [
+        "org_eclipse_jetty_jetty_http",
+        "org_eclipse_jetty_jetty_io",
+        "org_eclipse_jetty_jetty_util",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.http2/jetty-http2-server:12.0.29",
+      "target": "org_eclipse_jetty_http2_jetty_http2_server",
+      "path": "org/eclipse/jetty/http2/jetty-http2-server/12.0.29/jetty-http2-server-12.0.29.jar",
+      "sha256": "1e4b5c46e9485d9e64a8e69d41f11e63b0b5e16c0e58a0b1db1c51600b5d4467",
+      "deps": [
+        "org_eclipse_jetty_http2_jetty_http2_common",
+        "org_eclipse_jetty_jetty_server",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.websocket/jetty-websocket-core-client:12.0.29",
+      "target": "org_eclipse_jetty_websocket_jetty_websocket_core_client",
+      "path": "org/eclipse/jetty/websocket/jetty-websocket-core-client/12.0.29/jetty-websocket-core-client-12.0.29.jar",
+      "sha256": "d28b4cc23dd5789c273a26b8468db66408ad0080292efe4f754e8c4967515cee",
+      "deps": [
+        "org_eclipse_jetty_jetty_client",
+        "org_eclipse_jetty_websocket_jetty_websocket_core_common"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.websocket/jetty-websocket-core-common:12.0.29",
+      "target": "org_eclipse_jetty_websocket_jetty_websocket_core_common",
+      "path": "org/eclipse/jetty/websocket/jetty-websocket-core-common/12.0.29/jetty-websocket-core-common-12.0.29.jar",
+      "sha256": "97d66d7f9e5cf30320c2e3de313eed4d18b6c72298117edd82039fcd3ae204d9",
+      "deps": [
+        "org_eclipse_jetty_jetty_http",
+        "org_eclipse_jetty_jetty_io",
+        "org_slf4j_slf4j_api"
+      ]
+    },
+    {
+      "coordinates": "org.eclipse.jetty.websocket/jetty-websocket-core-server:12.0.29",
+      "target": "org_eclipse_jetty_websocket_jetty_websocket_core_server",
+      "path": "org/eclipse/jetty/websocket/jetty-websocket-core-server/12.0.29/jetty-websocket-core-server-12.0.29.jar",
+      "sha256": "47afc1e3a85512d9cea31a0617198974f4185209a1beca6325ba3e717aafa460",
+      "deps": [
+        "org_eclipse_jetty_jetty_server",
+        "org_eclipse_jetty_websocket_jetty_websocket_core_common"
+      ]
+    },
+    {
+      "coordinates": "org.javassist/javassist:3.18.1-GA",
+      "target": "org_javassist_javassist",
+      "path": "org/javassist/javassist/3.18.1-GA/javassist-3.18.1-GA.jar",
+      "sha256": "3fb71231afd098bb0f93f5eb97aa8291c8d0556379125e596f92ec8f944c6162",
       "deps": []
     },
     {
@@ -373,6 +1093,85 @@
       "path": "org/jspecify/jspecify/1.0.0/jspecify-1.0.0.jar",
       "sha256": "1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab",
       "deps": []
+    },
+    {
+      "coordinates": "org.msgpack/msgpack:0.6.12",
+      "target": "org_msgpack_msgpack",
+      "path": "org/msgpack/msgpack/0.6.12/msgpack-0.6.12.jar",
+      "sha256": "e09ca65d8520488e80a5dc426848a8afccfd40f4a2eb3b9646042595d3bd9b5e",
+      "deps": [
+        "com_googlecode_json_simple_json_simple",
+        "org_javassist_javassist"
+      ]
+    },
+    {
+      "coordinates": "org.ow2.asm/asm:9.9",
+      "target": "org_ow2_asm_asm",
+      "path": "org/ow2/asm/asm/9.9/asm-9.9.jar",
+      "sha256": "03d99a74ad1ee5c71334ef67437f4ef4fe3488caa7c96d8645abc73c8e2017d4",
+      "deps": []
+    },
+    {
+      "coordinates": "org.ow2.asm/asm-commons:9.9",
+      "target": "org_ow2_asm_asm_commons",
+      "path": "org/ow2/asm/asm-commons/9.9/asm-commons-9.9.jar",
+      "sha256": "db2f6f26150bbe7c126606b4a1151836bcc22a1e05a423b3585698bece995ff8",
+      "deps": [
+        "org_ow2_asm_asm",
+        "org_ow2_asm_asm_tree"
+      ]
+    },
+    {
+      "coordinates": "org.ow2.asm/asm-tree:9.9",
+      "target": "org_ow2_asm_asm_tree",
+      "path": "org/ow2/asm/asm-tree/9.9/asm-tree-9.9.jar",
+      "sha256": "42178f3775c9c63f9e5e1446747d29b4eca4d91bd6e75e5c43cfa372a47d38c6",
+      "deps": [
+        "org_ow2_asm_asm"
+      ]
+    },
+    {
+      "coordinates": "org.ring-clojure/ring-core-protocols:1.15.3",
+      "target": "org_ring_clojure_ring_core_protocols",
+      "path": "org/ring-clojure/ring-core-protocols/1.15.3/ring-core-protocols-1.15.3.jar",
+      "sha256": "95eb3510ae71042738a767926b29954865e012da88f13bbfae823bfbd77d02fc",
+      "deps": []
+    },
+    {
+      "coordinates": "org.ring-clojure/ring-websocket-protocols:1.15.3",
+      "target": "org_ring_clojure_ring_websocket_protocols",
+      "path": "org/ring-clojure/ring-websocket-protocols/1.15.3/ring-websocket-protocols-1.15.3.jar",
+      "sha256": "684e1b46039a445229e7e900d77f9627e40ae9651495b1373c7084555a1101e4",
+      "deps": []
+    },
+    {
+      "coordinates": "org.slf4j/slf4j-api:2.0.17",
+      "target": "org_slf4j_slf4j_api",
+      "path": "org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.jar",
+      "sha256": "7b751d952061954d5abfed7181c1f645d336091b679891591d63329c622eb832",
+      "deps": []
+    },
+    {
+      "coordinates": "ring/ring-codec:1.3.0",
+      "target": "ring_ring_codec",
+      "path": "ring/ring-codec/1.3.0/ring-codec-1.3.0.jar",
+      "sha256": "a3176d58f2b9e2e4e2c6c75c06d1df2b162247ee09ba98d525547e9e59c880ef",
+      "deps": []
+    },
+    {
+      "coordinates": "ring/ring-core:1.15.3",
+      "target": "ring_ring_core",
+      "path": "ring/ring-core/1.15.3/ring-core-1.15.3.jar",
+      "sha256": "4d8d97098898e33e8bb78d3f0f28b0b1c8cede6d88ba3a4ec35ee58e974007bc",
+      "deps": [
+        "commons_io_commons_io",
+        "crypto_equality_crypto_equality",
+        "crypto_random_crypto_random",
+        "org_apache_commons_commons_fileupload2_core",
+        "org_ring_clojure_ring_core_protocols",
+        "org_ring_clojure_ring_websocket_protocols",
+        "ring_ring_codec"
+      ]
     }
   ]
 }

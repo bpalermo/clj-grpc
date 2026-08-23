@@ -15,4 +15,3 @@ pom.xml.asc
 
 # Bazel
 bazel-*
-MODULE.bazel.lock

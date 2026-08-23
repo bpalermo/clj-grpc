@@ -74,6 +74,23 @@ pin block, run the test.
 TLS: h2c needs none. For TLS, JDK SSL works out of the box via `:tls`;
 `netty-tcnative-boringssl-static 2.0.81.Final` is the optional OpenSSL add-on.
 
+## Against REST
+
+`bazel run //bench:run` measures full round trips on loopback with persistent
+connections — identical echo semantics, this library versus the ordinary
+Clojure REST stack (Pedestal 0.8.1 on Jetty, jsonista both sides, JDK
+HttpClient). Mean latency, quick-mode criterium, JDK 21, Linux x86_64:
+
+| payload | gRPC (clj-grpc) | REST (Pedestal+JSON) |
+|---|---|---|
+| small (~10 B) | 275 µs | 781 µs |
+| medium (1 KB) | 287 µs | 910 µs |
+| large (64 KB) | 1.58 ms | 4.50 ms |
+
+~2.8× at every size, and the gap holds from framing-dominated to
+bytes-dominated payloads. The smoke test keeps both arms serving and agreeing
+on every `bazel test //...`.
+
 ## Building
 
 Bazel (with [rules_clj](https://github.com/bpalermo/rules_clj)):
