@@ -16,6 +16,19 @@ git_override(
     remote = "https://github.com/bpalermo/rules_clj.git",
 )
 
+native_toolchains = use_extension(
+    "@rules_clj//clojure:extensions.bzl",
+    "native_toolchains",
+    dev_dependency = True,
+)
+native_toolchains.graalvm(version = "21.0.2")
+use_repo(native_toolchains, "graalvm")
+
+register_toolchains(
+    "@graalvm//:toolchain",
+    dev_dependency = True,
+)
+
 deps = use_extension("@rules_clj//clojure:extensions.bzl", "deps")
 deps.install(
     name = "deps",

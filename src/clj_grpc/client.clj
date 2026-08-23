@@ -11,8 +11,9 @@
     :bidi             observer-map -> {:send! ... :close! ...}; responses
                       arrive through the caller's {:on-next ...} map"
   (:require [clj-grpc.transport :as transport])
+  ;; NettyChannelBuilder fully-qualified for the same native-image reason as
+  ;; server.clj/transport.clj.
   (:import [io.grpc CallOptions ManagedChannel]
-           [io.grpc.netty NettyChannelBuilder]
            [io.grpc.stub ClientCalls StreamObserver]
            [java.util.concurrent TimeUnit]))
 
@@ -41,8 +42,8 @@
         transport (transport/resolve-transport
                    (if (and unix? (nil? transport)) :epoll transport))
         builder   (if unix?
-                    (NettyChannelBuilder/forAddress (transport/->address target))
-                    (NettyChannelBuilder/forTarget ^String target))]
+                    (io.grpc.netty.NettyChannelBuilder/forAddress (transport/->address target))
+                    (io.grpc.netty.NettyChannelBuilder/forTarget ^String target))]
     (cond
       (= :direct executor) (.directExecutor builder)
       executor (.executor builder ^java.util.concurrent.Executor executor))

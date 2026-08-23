@@ -89,6 +89,31 @@ Two measured levers, honest about their trade:
   ~7 µs. If a workload makes N small calls where one stream would do, no
   executor choice compares to fixing that.
 
+## Cold start
+
+Time-to-first-RPC for a cold server process — the number Knative
+scale-from-zero pays. Measured with `//bench:coldstart` (spawn to first
+successful call, warm prober, median of 5):
+
+| arm | median | range |
+|---|---|---|
+| plain deploy jar | 2895 ms | 2648–3146 ms |
+| **AppCDS** (archive trained on server startup) | **1246 ms** | 1004–2802 ms |
+| CDS + C1-only JIT | 1307 ms | 1090–2771 ms |
+
+CDS at *deploy* shape has none of the cache objections that disqualify it for
+build actions: the archive is dumped in the container against jars that never
+move again, for a −57% cold start. Train with
+`-XX:ArchiveClassesAtExit=app.jsa`, run with `-Xshare:on
+-XX:SharedArchiveFile=app.jsa`.
+
+A GraalVM native-image arm builds only until real Netty code is reachable:
+Clojure AOT resolves class constants with eager initialization at namespace
+load, which collides with Netty's mandatory run-time-init native-image
+metadata. The groundwork (lazy fully-qualified Netty references) is in;
+finishing requires lazily-loaded leaf namespaces plus reachability
+registration — tracked as future work in docs/design.md.
+
 ## Against REST
 
 `bazel run //bench:run` measures full round trips on loopback with persistent
