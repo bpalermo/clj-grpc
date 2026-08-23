@@ -8,7 +8,7 @@ code — plain functions in, protobuf Messages on the wire.
 
 ```clojure
 ;; deps.edn
-com.github.bpalermo/clj-grpc {:mvn/version "0.1.2"}
+com.github.bpalermo/clj-grpc {:mvn/version "0.1.3"}
 ```
 
 ## Serve
