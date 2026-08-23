@@ -1,0 +1,33 @@
+# clj-grpc — gRPC on non-shaded Netty for Clojure, over clj-protobuf.
+#
+# Bazel is the build and test harness; consumers arrive via Clojars
+# (com.github.bpalermo/clj-grpc). build.clj owns the jar/pom/deploy step and
+# reads the same deps.edn.
+module(
+    name = "clj_grpc",
+    version = "0.1.0",
+)
+
+# DELETE THE OVERRIDE once rules_clj is in the BCR.
+bazel_dep(name = "rules_clj", version = "0.1.0")
+git_override(
+    module_name = "rules_clj",
+    branch = "main",
+    remote = "https://github.com/bpalermo/rules_clj.git",
+)
+
+deps = use_extension("@rules_clj//clojure:extensions.bzl", "deps")
+deps.install(
+    name = "deps",
+    lock = "//:deps.lock.json",
+)
+use_repo(deps, "deps")
+
+# For the e2e fixtures: proto_library + java_proto_library give the service
+# tests protoc's reference classes, exactly as clj-protobuf's byte-identity
+# suite uses them.
+bazel_dep(name = "protobuf", version = "35.1", dev_dependency = True)
+bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.3", dev_dependency = True)
+
+# Solely for the sh_test wrapping the version-consistency check.
+bazel_dep(name = "rules_shell", version = "0.8.0", dev_dependency = True)

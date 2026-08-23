@@ -1,0 +1,78 @@
+load("@rules_clj//clojure:defs.bzl", "clj_library", "clj_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# The generated greeter fixture: real protoc-gen-clojure 0.4.0 output (the
+# clj-protobuf.* / clj-grpc.service namespace defaults).
+clj_library(
+    name = "fixtures",
+    srcs = glob(["fixtures/**/*.clj"]),
+    namespaces = ["acme.greeter.greeter"],
+    strip_prefix = "test/fixtures",
+    deps = [
+        "//src:clj_grpc",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+TEST_DEPS = [
+    ":fixtures",
+    "//src:clj_grpc",
+    # Flips the fixture's class hints on; the service tests assert the
+    # resulting pool alignment, the e2e tests exercise it over the wire.
+    "//test/proto:greeter_java_proto",
+    "@deps//:com_github_bpalermo_clj_protobuf",
+    "@deps//:com_google_protobuf_protobuf_java",
+    "@deps//:io_grpc_grpc_api",
+    "@deps//:io_grpc_grpc_netty",
+    "@deps//:io_grpc_grpc_protobuf",
+    "@deps//:io_grpc_grpc_services",
+    "@deps//:io_grpc_grpc_stub",
+    "@deps//:io_netty_netty_common",
+    "@deps//:org_clojure_clojure",
+]
+
+clj_library(
+    name = "service_test_lib",
+    srcs = ["clj_grpc/service_test.clj"],
+    namespaces = ["clj-grpc.service-test"],
+    strip_prefix = "test",
+    deps = TEST_DEPS,
+)
+
+clj_test(
+    name = "service_test",
+    ns = "clj-grpc.service-test",
+    deps = [":service_test_lib"],
+)
+
+clj_library(
+    name = "e2e_test_lib",
+    srcs = ["clj_grpc/e2e_test.clj"],
+    namespaces = ["clj-grpc.e2e-test"],
+    strip_prefix = "test",
+    deps = TEST_DEPS,
+)
+
+clj_test(
+    name = "e2e_test",
+    size = "medium",
+    ns = "clj-grpc.e2e-test",
+    deps = [":e2e_test_lib"],
+)
+
+clj_library(
+    name = "netty_alignment_test_lib",
+    srcs = ["clj_grpc/netty_alignment_test.clj"],
+    namespaces = ["clj-grpc.netty-alignment-test"],
+    strip_prefix = "test",
+    deps = TEST_DEPS,
+)
+
+clj_test(
+    name = "netty_alignment_test",
+    ns = "clj-grpc.netty-alignment-test",
+    deps = [":netty_alignment_test_lib"],
+)

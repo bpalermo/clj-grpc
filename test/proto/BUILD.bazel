@@ -1,0 +1,19 @@
+load("@protobuf//bazel:java_proto_library.bzl", "java_proto_library")
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
+
+package(default_visibility = ["//visibility:public"])
+
+proto_library(
+    name = "greeter_proto",
+    srcs = ["acme/greeter/greeter.proto"],
+    strip_import_prefix = "/test/proto",
+)
+
+# protoc's Java classes for the greeter. On the e2e classpath deliberately:
+# the fixture's class hints then resolve, and the tests prove the service
+# layer's prototypes land in the same (generated) pool as the namespace's —
+# the pool-alignment property the marshallers depend on.
+java_proto_library(
+    name = "greeter_java_proto",
+    deps = [":greeter_proto"],
+)

@@ -1,0 +1,46 @@
+load("@rules_clj//clojure:defs.bzl", "clj_library")
+
+package(default_visibility = ["//visibility:public"])
+
+clj_library(
+    name = "clj_grpc",
+    srcs = glob(["clj_grpc/**/*.clj"]),
+    namespaces = [
+        "clj-grpc.service",
+        "clj-grpc.transport",
+        "clj-grpc.server",
+        "clj-grpc.client",
+        "clj-grpc.knative",
+        "clj-grpc.runtime.service",
+    ],
+    strip_prefix = "src",
+    deps = [
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:io_grpc_grpc_api",
+        "@deps//:io_grpc_grpc_core",
+        "@deps//:io_grpc_grpc_netty",
+        "@deps//:io_grpc_grpc_protobuf",
+        "@deps//:io_grpc_grpc_services",
+        "@deps//:io_grpc_grpc_stub",
+        # Every pinned netty artifact, listed explicitly: the lock records no
+        # dependency edges for top-level-pinned libs (their :dependents lists
+        # are empty at the root), so transitivity cannot be relied on here.
+        "@deps//:io_netty_netty_buffer",
+        "@deps//:io_netty_netty_codec",
+        "@deps//:io_netty_netty_codec_base",
+        "@deps//:io_netty_netty_codec_http",
+        "@deps//:io_netty_netty_codec_http2",
+        "@deps//:io_netty_netty_codec_socks",
+        "@deps//:io_netty_netty_common",
+        "@deps//:io_netty_netty_handler",
+        "@deps//:io_netty_netty_handler_proxy",
+        "@deps//:io_netty_netty_resolver",
+        "@deps//:io_netty_netty_transport",
+        "@deps//:io_netty_netty_transport_classes_epoll",
+        "@deps//:io_netty_netty_transport_native_epoll_linux_aarch_64",
+        "@deps//:io_netty_netty_transport_native_epoll_linux_x86_64",
+        "@deps//:io_netty_netty_transport_native_unix_common",
+        "@deps//:org_clojure_clojure",
+    ],
+)

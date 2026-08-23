@@ -1,0 +1,378 @@
+{
+  "version": 1,
+  "repositories": [
+    "https://repo1.maven.org/maven2/",
+    "https://repo.clojars.org/"
+  ],
+  "artifacts": [
+    {
+      "coordinates": "com.github.bpalermo/clj-protobuf:0.1.5",
+      "target": "com_github_bpalermo_clj_protobuf",
+      "path": "com/github/bpalermo/clj-protobuf/0.1.5/clj-protobuf-0.1.5.jar",
+      "sha256": "ed0e5f2b4a8d5bb4c1bc170d88585c1f7b4661427e5e6e0e728b8a5fac1defd0",
+      "deps": [
+        "com_google_protobuf_protobuf_java"
+      ]
+    },
+    {
+      "coordinates": "com.google.android/annotations:4.1.1.4",
+      "target": "com_google_android_annotations",
+      "path": "com/google/android/annotations/4.1.1.4/annotations-4.1.1.4.jar",
+      "sha256": "ba734e1e84c09d615af6a09d33034b4f0442f8772dec120efb376d86a565ae15",
+      "deps": []
+    },
+    {
+      "coordinates": "com.google.api.grpc/proto-google-common-protos:2.64.1",
+      "target": "com_google_api_grpc_proto_google_common_protos",
+      "path": "com/google/api/grpc/proto-google-common-protos/2.64.1/proto-google-common-protos-2.64.1.jar",
+      "sha256": "beb8107f340dc0bb04bf40d1a61631a21e450c58aad93c160959f0292136d99f",
+      "deps": []
+    },
+    {
+      "coordinates": "com.google.code.findbugs/jsr305:3.0.2",
+      "target": "com_google_code_findbugs_jsr305",
+      "path": "com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar",
+      "sha256": "766ad2a0783f2687962c8ad74ceecc38a28b9f72a2d085ee438b7813e928d0c7",
+      "deps": []
+    },
+    {
+      "coordinates": "com.google.code.gson/gson:2.14.0",
+      "target": "com_google_code_gson_gson",
+      "path": "com/google/code/gson/gson/2.14.0/gson-2.14.0.jar",
+      "sha256": "2cbd119bf1961c28788310963dc80ba65f58cdeec1dd139c8bdb1240faa2c36f",
+      "deps": []
+    },
+    {
+      "coordinates": "com.google.errorprone/error_prone_annotations:2.50.0",
+      "target": "com_google_errorprone_error_prone_annotations",
+      "path": "com/google/errorprone/error_prone_annotations/2.50.0/error_prone_annotations-2.50.0.jar",
+      "sha256": "4667724877f1d37a689202da191e23efa7657c62eef93ccdac406eccfe5cdd0a",
+      "deps": []
+    },
+    {
+      "coordinates": "com.google.guava/failureaccess:1.0.3",
+      "target": "com_google_guava_failureaccess",
+      "path": "com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3.jar",
+      "sha256": "cbfc3906b19b8f55dd7cfd6dfe0aa4532e834250d7f080bd8d211a3e246b59cb",
+      "deps": []
+    },
+    {
+      "coordinates": "com.google.guava/guava:33.6.0-jre",
+      "target": "com_google_guava_guava",
+      "path": "com/google/guava/guava/33.6.0-jre/guava-33.6.0-jre.jar",
+      "sha256": "dc573e1fca4fd5454f4a5fd3d7da2df03002876a4175bafc14a95980dd7713b3",
+      "deps": [
+        "com_google_guava_failureaccess",
+        "com_google_guava_listenablefuture",
+        "com_google_j2objc_j2objc_annotations",
+        "org_jspecify_jspecify"
+      ]
+    },
+    {
+      "coordinates": "com.google.guava/listenablefuture:9999.0-empty-to-avoid-conflict-with-guava",
+      "target": "com_google_guava_listenablefuture",
+      "path": "com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar",
+      "sha256": "b372a037d4230aa57fbeffdef30fd6123f9c0c2db85d0aced00c91b974f33f99",
+      "deps": []
+    },
+    {
+      "coordinates": "com.google.j2objc/j2objc-annotations:3.1",
+      "target": "com_google_j2objc_j2objc_annotations",
+      "path": "com/google/j2objc/j2objc-annotations/3.1/j2objc-annotations-3.1.jar",
+      "sha256": "84d3a150518485f8140ea99b8a985656749629f6433c92b80c75b36aba3b099b",
+      "deps": []
+    },
+    {
+      "coordinates": "com.google.protobuf/protobuf-java:4.35.1",
+      "target": "com_google_protobuf_protobuf_java",
+      "path": "com/google/protobuf/protobuf-java/4.35.1/protobuf-java-4.35.1.jar",
+      "sha256": "a4345ba2aa009912ff6f90467fea2d104605256b72c50840d75f13256638a472",
+      "deps": []
+    },
+    {
+      "coordinates": "com.google.protobuf/protobuf-java-util:3.25.9",
+      "target": "com_google_protobuf_protobuf_java_util",
+      "path": "com/google/protobuf/protobuf-java-util/3.25.9/protobuf-java-util-3.25.9.jar",
+      "sha256": "805da7926a7615f2e26b66634ed352d50364550052163a50c3759d8ac075dc25",
+      "deps": [
+        "com_google_code_findbugs_jsr305"
+      ]
+    },
+    {
+      "coordinates": "io.grpc/grpc-api:1.83.1",
+      "target": "io_grpc_grpc_api",
+      "path": "io/grpc/grpc-api/1.83.1/grpc-api-1.83.1.jar",
+      "sha256": "96a94b488a8a9a922e9e455ac4c87d9edcb37be4ed79ec1f14e98da267a6c505",
+      "deps": [
+        "com_google_code_findbugs_jsr305",
+        "com_google_errorprone_error_prone_annotations"
+      ]
+    },
+    {
+      "coordinates": "io.grpc/grpc-context:1.83.1",
+      "target": "io_grpc_grpc_context",
+      "path": "io/grpc/grpc-context/1.83.1/grpc-context-1.83.1.jar",
+      "sha256": "8224f45eccae567d68e34e7e0d2fde2f4ed36afc56d6496470f5c156b886b768",
+      "deps": []
+    },
+    {
+      "coordinates": "io.grpc/grpc-core:1.83.1",
+      "target": "io_grpc_grpc_core",
+      "path": "io/grpc/grpc-core/1.83.1/grpc-core-1.83.1.jar",
+      "sha256": "e417d5fe3b273aba8e24c5bf8edaf400297ae88a2ede828a2b75c3403b3d13e3",
+      "deps": [
+        "com_google_android_annotations",
+        "com_google_code_gson_gson",
+        "com_google_errorprone_error_prone_annotations",
+        "io_grpc_grpc_context",
+        "io_perfmark_perfmark_api",
+        "org_codehaus_mojo_animal_sniffer_annotations"
+      ]
+    },
+    {
+      "coordinates": "io.grpc/grpc-netty:1.83.1",
+      "target": "io_grpc_grpc_netty",
+      "path": "io/grpc/grpc-netty/1.83.1/grpc-netty-1.83.1.jar",
+      "sha256": "aa8ea76d5bface5b5d6d3ed3307c981bd2b98e74d368bf1afba7fb6803b9ced6",
+      "deps": [
+        "com_google_errorprone_error_prone_annotations",
+        "io_grpc_grpc_util",
+        "io_perfmark_perfmark_api",
+        "org_codehaus_mojo_animal_sniffer_annotations"
+      ]
+    },
+    {
+      "coordinates": "io.grpc/grpc-protobuf:1.83.1",
+      "target": "io_grpc_grpc_protobuf",
+      "path": "io/grpc/grpc-protobuf/1.83.1/grpc-protobuf-1.83.1.jar",
+      "sha256": "f58e9b04850e8d5a820081de1ba1d93fd641af3182e743f4066818645f1ee58f",
+      "deps": [
+        "com_google_api_grpc_proto_google_common_protos",
+        "com_google_code_findbugs_jsr305",
+        "io_grpc_grpc_protobuf_lite"
+      ]
+    },
+    {
+      "coordinates": "io.grpc/grpc-protobuf-lite:1.83.1",
+      "target": "io_grpc_grpc_protobuf_lite",
+      "path": "io/grpc/grpc-protobuf-lite/1.83.1/grpc-protobuf-lite-1.83.1.jar",
+      "sha256": "70fd274685f8f8b94aeecfd082168ce9518d04da9add5192aeffd46f582de103",
+      "deps": [
+        "com_google_code_findbugs_jsr305"
+      ]
+    },
+    {
+      "coordinates": "io.grpc/grpc-services:1.83.1",
+      "target": "io_grpc_grpc_services",
+      "path": "io/grpc/grpc-services/1.83.1/grpc-services-1.83.1.jar",
+      "sha256": "fab717666c0571ff7118b83c454668ae5273dbdc0137f77184a890ecc9a33b9d",
+      "deps": [
+        "com_google_code_gson_gson",
+        "com_google_errorprone_error_prone_annotations",
+        "com_google_guava_guava",
+        "com_google_protobuf_protobuf_java_util",
+        "io_grpc_grpc_util"
+      ]
+    },
+    {
+      "coordinates": "io.grpc/grpc-stub:1.83.1",
+      "target": "io_grpc_grpc_stub",
+      "path": "io/grpc/grpc-stub/1.83.1/grpc-stub-1.83.1.jar",
+      "sha256": "431c1280d85dd34c93f2ede7cc192c591b660a1becb6053da1423b0a6526c86a",
+      "deps": [
+        "com_google_errorprone_error_prone_annotations",
+        "org_codehaus_mojo_animal_sniffer_annotations"
+      ]
+    },
+    {
+      "coordinates": "io.grpc/grpc-util:1.83.1",
+      "target": "io_grpc_grpc_util",
+      "path": "io/grpc/grpc-util/1.83.1/grpc-util-1.83.1.jar",
+      "sha256": "4e722bf41a8d305e0436f16e69f7787ce5a227dc0dac45be06e8c197f08275e4",
+      "deps": [
+        "org_codehaus_mojo_animal_sniffer_annotations"
+      ]
+    },
+    {
+      "coordinates": "io.netty/netty-buffer:4.2.16.Final",
+      "target": "io_netty_netty_buffer",
+      "path": "io/netty/netty-buffer/4.2.16.Final/netty-buffer-4.2.16.Final.jar",
+      "sha256": "cc36ae9fbd0b03fe755eb4eb4424ca53b59cfd297d7fd47d49e5b1059beded6c",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-codec:4.2.16.Final",
+      "target": "io_netty_netty_codec",
+      "path": "io/netty/netty-codec/4.2.16.Final/netty-codec-4.2.16.Final.jar",
+      "sha256": "41868bcc428954e707e39a30686ceddc0bd238391d3989d04dfb72d5f0735926",
+      "deps": [
+        "io_netty_netty_codec_compression",
+        "io_netty_netty_codec_marshalling",
+        "io_netty_netty_codec_protobuf"
+      ]
+    },
+    {
+      "coordinates": "io.netty/netty-codec-base:4.2.16.Final",
+      "target": "io_netty_netty_codec_base",
+      "path": "io/netty/netty-codec-base/4.2.16.Final/netty-codec-base-4.2.16.Final.jar",
+      "sha256": "feb410225938d9970de6b624a0c031d079804fa5cc5e1ec6e9298f16db5998a7",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-codec-compression:4.2.16.Final",
+      "target": "io_netty_netty_codec_compression",
+      "path": "io/netty/netty-codec-compression/4.2.16.Final/netty-codec-compression-4.2.16.Final.jar",
+      "sha256": "13c8565414dd2115281303ef4ad1f7cc69bd7771d8d12c7d2fb31307dff26d11",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-codec-http:4.2.16.Final",
+      "target": "io_netty_netty_codec_http",
+      "path": "io/netty/netty-codec-http/4.2.16.Final/netty-codec-http-4.2.16.Final.jar",
+      "sha256": "0d16f981de8d0d304a2ab1a81f0a674892089fbaa8a583100aebb4a5b00456ec",
+      "deps": [
+        "io_netty_netty_codec_compression"
+      ]
+    },
+    {
+      "coordinates": "io.netty/netty-codec-http2:4.2.16.Final",
+      "target": "io_netty_netty_codec_http2",
+      "path": "io/netty/netty-codec-http2/4.2.16.Final/netty-codec-http2-4.2.16.Final.jar",
+      "sha256": "fe1ffc7ed6bfb40f91c4e265fe76e3be7f9049deef0e8cf5a992420e4f02b542",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-codec-marshalling:4.2.16.Final",
+      "target": "io_netty_netty_codec_marshalling",
+      "path": "io/netty/netty-codec-marshalling/4.2.16.Final/netty-codec-marshalling-4.2.16.Final.jar",
+      "sha256": "9691818c6e59a97e454f8381c86dfe840302168d985098a278dca07781efc75e",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-codec-protobuf:4.2.16.Final",
+      "target": "io_netty_netty_codec_protobuf",
+      "path": "io/netty/netty-codec-protobuf/4.2.16.Final/netty-codec-protobuf-4.2.16.Final.jar",
+      "sha256": "bb66f23ccb543dd842ddda91b6c8e97e222220d2efa5459f6a46a22ade3b2170",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-codec-socks:4.2.16.Final",
+      "target": "io_netty_netty_codec_socks",
+      "path": "io/netty/netty-codec-socks/4.2.16.Final/netty-codec-socks-4.2.16.Final.jar",
+      "sha256": "e5230b4c467755bb570c846c8e3c0ffadcb1b568c1cd9a3a4ee946734baae54d",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-common:4.2.16.Final",
+      "target": "io_netty_netty_common",
+      "path": "io/netty/netty-common/4.2.16.Final/netty-common-4.2.16.Final.jar",
+      "sha256": "9825ee68a0dc4cd2b53e2f532502401b2211bad9b77e8b04882d9e64487283ff",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-handler:4.2.16.Final",
+      "target": "io_netty_netty_handler",
+      "path": "io/netty/netty-handler/4.2.16.Final/netty-handler-4.2.16.Final.jar",
+      "sha256": "a259ca496da05ac1981f95cd856211f894a328056a6129e9cd70dbbd5df401f7",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-handler-proxy:4.2.16.Final",
+      "target": "io_netty_netty_handler_proxy",
+      "path": "io/netty/netty-handler-proxy/4.2.16.Final/netty-handler-proxy-4.2.16.Final.jar",
+      "sha256": "c53706ebaffd2fcef17b5f675b81eab4be13a714886cb4b2a7d0b73275cd39fe",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-resolver:4.2.16.Final",
+      "target": "io_netty_netty_resolver",
+      "path": "io/netty/netty-resolver/4.2.16.Final/netty-resolver-4.2.16.Final.jar",
+      "sha256": "c9eca6a99036485cf1d186b4a6a595b0a54c53808319ee03924270eae04c32bb",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-transport:4.2.16.Final",
+      "target": "io_netty_netty_transport",
+      "path": "io/netty/netty-transport/4.2.16.Final/netty-transport-4.2.16.Final.jar",
+      "sha256": "cfa3f654caff906653385f4b7ddaa539d795b78f5711a622482b17d2b73484c0",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-transport-classes-epoll:4.2.16.Final",
+      "target": "io_netty_netty_transport_classes_epoll",
+      "path": "io/netty/netty-transport-classes-epoll/4.2.16.Final/netty-transport-classes-epoll-4.2.16.Final.jar",
+      "sha256": "9f2b53210db9c8d24e787ed43f3896aaf30d686ed270c7afbb29ab6330c6aa23",
+      "deps": []
+    },
+    {
+      "coordinates": "io.netty/netty-transport-native-epoll$linux-aarch_64:4.2.16.Final",
+      "target": "io_netty_netty_transport_native_epoll_linux_aarch_64",
+      "path": "io/netty/netty-transport-native-epoll/4.2.16.Final/netty-transport-native-epoll-4.2.16.Final-linux-aarch_64.jar",
+      "sha256": "212cc7d81390e31b580a1fb91b6c8d963b43e762ed072c555e2b09ad4476e928",
+      "deps": [
+        "io_netty_netty_transport_classes_epoll"
+      ]
+    },
+    {
+      "coordinates": "io.netty/netty-transport-native-epoll$linux-x86_64:4.2.16.Final",
+      "target": "io_netty_netty_transport_native_epoll_linux_x86_64",
+      "path": "io/netty/netty-transport-native-epoll/4.2.16.Final/netty-transport-native-epoll-4.2.16.Final-linux-x86_64.jar",
+      "sha256": "2e00548e731948881d0c73ee79d2ead759254e750929406a1d595484758f0267",
+      "deps": [
+        "io_netty_netty_transport_classes_epoll"
+      ]
+    },
+    {
+      "coordinates": "io.netty/netty-transport-native-unix-common:4.2.16.Final",
+      "target": "io_netty_netty_transport_native_unix_common",
+      "path": "io/netty/netty-transport-native-unix-common/4.2.16.Final/netty-transport-native-unix-common-4.2.16.Final.jar",
+      "sha256": "41ca8fe192083d17917be7ddcecded4da4fc1db1d1656d03d0bcb14e2f431155",
+      "deps": []
+    },
+    {
+      "coordinates": "io.perfmark/perfmark-api:0.27.0",
+      "target": "io_perfmark_perfmark_api",
+      "path": "io/perfmark/perfmark-api/0.27.0/perfmark-api-0.27.0.jar",
+      "sha256": "c7b478503ec524e55df19b424d46d27c8a68aeb801664fadd4f069b71f52d0f6",
+      "deps": []
+    },
+    {
+      "coordinates": "org.clojure/clojure:1.12.5",
+      "target": "org_clojure_clojure",
+      "path": "org/clojure/clojure/1.12.5/clojure-1.12.5.jar",
+      "sha256": "dfdee131460216a84fef22e537bb0d0579965f8f70338d748323dff26f8e5a8b",
+      "deps": [
+        "org_clojure_core_specs_alpha",
+        "org_clojure_spec_alpha"
+      ]
+    },
+    {
+      "coordinates": "org.clojure/core.specs.alpha:0.4.74",
+      "target": "org_clojure_core_specs_alpha",
+      "path": "org/clojure/core.specs.alpha/0.4.74/core.specs.alpha-0.4.74.jar",
+      "sha256": "eb73ac08cf49ba840c88ba67beef11336ca554333d9408808d78946e0feb9ddb",
+      "deps": []
+    },
+    {
+      "coordinates": "org.clojure/spec.alpha:0.5.238",
+      "target": "org_clojure_spec_alpha",
+      "path": "org/clojure/spec.alpha/0.5.238/spec.alpha-0.5.238.jar",
+      "sha256": "94cd99b6ea639641f37af4860a643b6ed399ee5a8be5d717cff0b663c8d75077",
+      "deps": []
+    },
+    {
+      "coordinates": "org.codehaus.mojo/animal-sniffer-annotations:1.27",
+      "target": "org_codehaus_mojo_animal_sniffer_annotations",
+      "path": "org/codehaus/mojo/animal-sniffer-annotations/1.27/animal-sniffer-annotations-1.27.jar",
+      "sha256": "cfd7e51a828fe6b98bc0dbb99e34900c9e9012322cb9ddd57fd8dd0b02da5e27",
+      "deps": []
+    },
+    {
+      "coordinates": "org.jspecify/jspecify:1.0.0",
+      "target": "org_jspecify_jspecify",
+      "path": "org/jspecify/jspecify/1.0.0/jspecify-1.0.0.jar",
+      "sha256": "1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab",
+      "deps": []
+    }
+  ]
+}
