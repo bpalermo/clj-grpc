@@ -64,6 +64,20 @@ clj_test(
 )
 
 clj_library(
+    name = "knative_preset_test_lib",
+    srcs = ["clj_grpc/knative_preset_test.clj"],
+    namespaces = ["clj-grpc.knative-preset-test"],
+    strip_prefix = "test",
+    deps = TEST_DEPS,
+)
+
+clj_test(
+    name = "knative_preset_test",
+    ns = "clj-grpc.knative-preset-test",
+    deps = TEST_DEPS + [":knative_preset_test_lib"],
+)
+
+clj_library(
     name = "netty_alignment_test_lib",
     srcs = ["clj_grpc/netty_alignment_test.clj"],
     namespaces = ["clj-grpc.netty-alignment-test"],

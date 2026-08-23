@@ -9,6 +9,7 @@ clj_library(
         "clj-grpc.service",
         "clj-grpc.transport",
         "clj-grpc.server",
+        "clj-grpc.health",
         "clj-grpc.client",
         "clj-grpc.knative",
         "clj-grpc.runtime.service",

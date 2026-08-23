@@ -33,8 +33,18 @@
     :reflection   false (default) — server reflection (v1)
     :executor     java.util.concurrent.Executor for handlers
     :interceptors [io.grpc.ServerInterceptor ...]
+    :permit-keepalive {:time-ms n :without-calls bool} — the pings this server
+                  ACCEPTS. gRPC's default permit is 5 minutes and calls-only;
+                  a client pinging faster gets GOAWAY too_many_pings, so a
+                  server whose clients keep connections warm (Knative, LBs)
+                  must lower this to match. clj-grpc.knative pairs the two.
+    :max-inbound-message-size bytes
     :tls          {:cert-chain File/path :private-key File/path}; absent means
-                  h2c (plaintext HTTP/2), which is what Knative speaks"
+                  h2c (plaintext HTTP/2), which is what Knative speaks
+
+  Handlers run on virtual threads by default (:executor overrides): Clojure
+  handlers block — that is the model — and grpc's default shared pool is sized
+  for handlers that never do."
   (:require [clj-grpc.transport :as transport])
   (:import [io.grpc Server ServerInterceptor ServerServiceDefinition
             Status StatusRuntimeException]
@@ -44,7 +54,7 @@
             ServerCalls$ClientStreamingMethod ServerCalls$ServerStreamingMethod
             ServerCalls$UnaryMethod StreamObserver]
            [java.io File]
-           [java.util.concurrent Executor TimeUnit]))
+           [java.util.concurrent Executor Executors TimeUnit]))
 
 (set! *warn-on-reflection* true)
 
@@ -139,7 +149,7 @@
   "Build (without starting) a server. Returns {:server io.grpc.Server
   :health HealthStatusManager-or-nil :address SocketAddress}."
   [{:keys [services address port transport health reflection executor
-           interceptors tls]
+           interceptors tls permit-keepalive max-inbound-message-size]
     :or {health true}}]
   (let [addr      (transport/->address (or address (default-port)))
         unix?     (transport/unix-address? addr)
@@ -150,8 +160,17 @@
                     (.channelType (transport/server-channel-type transport unix?))
                     (.bossEventLoopGroup (transport/event-loop-group transport 1))
                     (.workerEventLoopGroup (transport/event-loop-group transport 0)))
-        health-mgr (when health (HealthStatusManager.))]
-    (when executor (.executor builder ^Executor executor))
+        health-mgr (when health (HealthStatusManager.))
+        owned-executor (when-not executor
+                         (Executors/newVirtualThreadPerTaskExecutor))]
+    (.executor builder ^Executor (or executor owned-executor))
+    (when-let [{:keys [time-ms without-calls]} permit-keepalive]
+      (when time-ms
+        (.permitKeepAliveTime builder (long time-ms) TimeUnit/MILLISECONDS))
+      (when (some? without-calls)
+        (.permitKeepAliveWithoutCalls builder (boolean without-calls))))
+    (when max-inbound-message-size
+      (.maxInboundMessageSize builder (int max-inbound-message-size)))
     (when tls
       (.useTransportSecurity builder
                              (File. (str (:cert-chain tls)))
@@ -162,6 +181,7 @@
     (when reflection (.addService builder (ProtoReflectionServiceV1/newInstance)))
     {:server (.build builder)
      :health health-mgr
+     :owned-executor owned-executor
      :address addr}))
 
 (defn start [{:keys [^Server server] :as s}]
@@ -172,13 +192,20 @@
   (.getPort server))
 
 (defn shutdown
-  "Graceful by default; :grace-ms bounds the drain, then forces."
+  "Graceful by default; :grace-ms bounds the drain, then forces. The health
+  service (when present) enters its terminal NOT_SERVING state first, so
+  load balancers stop routing before the listener closes — the drain order
+  Kubernetes rollouts assume."
   ([s] (shutdown s nil))
-  ([{:keys [^Server server] :as s} {:keys [grace-ms]}]
+  ([{:keys [^Server server ^HealthStatusManager health owned-executor] :as s}
+    {:keys [grace-ms]}]
+   (when health (.enterTerminalState health))
    (.shutdown server)
    (when grace-ms
      (when-not (.awaitTermination server (long grace-ms) TimeUnit/MILLISECONDS)
        (.shutdownNow server)))
+   (when owned-executor
+     (.shutdown ^java.util.concurrent.ExecutorService owned-executor))
    s))
 
 (defn await-termination [{:keys [^Server server]}]
