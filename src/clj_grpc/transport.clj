@@ -13,6 +13,7 @@
            [io.netty.channel.nio NioIoHandler]
            [io.netty.channel.socket.nio NioServerSocketChannel NioSocketChannel]
            [io.netty.channel.unix DomainSocketAddress]
+           [io.netty.util.concurrent DefaultThreadFactory]
            [java.net InetSocketAddress SocketAddress]))
 
 (set! *warn-on-reflection* true)
@@ -36,9 +37,14 @@
                              (Epoll/unavailabilityCause))))))
 
 (defn event-loop-group
+  "Daemon threads, deliberately — grpc's own default groups are daemon too. A
+  non-daemon event loop pins the JVM after main returns, which surfaces as
+  'tests pass, process never exits' the first time anything runs outside a
+  harness that calls System/exit."
   ^MultiThreadIoEventLoopGroup [transport threads]
   (MultiThreadIoEventLoopGroup.
    (int (or threads 0))
+   (DefaultThreadFactory. (str "clj-grpc-" (name transport)) true)
    (case transport
      :epoll (EpollIoHandler/newFactory)
      :nio   (NioIoHandler/newFactory))))
