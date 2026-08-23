@@ -92,6 +92,19 @@ own semantics, not a reimplementation. Thrown exceptions become
 (`HealthStatusManager`, default on) and reflection (v1, opt-in) are wired as
 grpc-services instances, not reimplemented.
 
+Handlers run on virtual threads by default: Clojure handlers block — that is
+the model — and grpc's default shared pool is sized for handlers that never
+do. `:executor` overrides; a server-owned executor is closed on shutdown.
+
+Keepalive is two-sided and the sides must agree: gRPC servers reject pings
+more frequent than `permitKeepAliveTime` (default five minutes) with
+`GOAWAY too_many_pings`, so `:permit-keepalive` is exposed and the Knative
+presets pair the client's 30-second pings with a matching server permit — a
+pairing pinned by its own test, because presets that fight each other are
+worse than no presets. Shutdown enters the health service's terminal
+NOT_SERVING state before the listener closes, the drain order rollouts
+assume; `clj-grpc.health` exposes status transitions as functions.
+
 Plaintext (h2c) is the default and TLS the option — the reverse of grpc-java's
 posture, because the deployment target is a mesh/Knative world where the
 platform owns transport security and h2c is what the ingress speaks.

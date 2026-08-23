@@ -7,6 +7,7 @@
   (:require [acme.greeter.greeter :as g]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [clj-grpc.client :as client]
+            [clj-grpc.health :as health]
             [clj-grpc.server :as server]
             [clj-grpc.transport :as transport])
   (:import [io.grpc.health.v1 HealthCheckRequest HealthGrpc]
@@ -115,12 +116,56 @@
                                 :target (str "unix://" path)}
         exercise-all-shapes))))
 
-(deftest health-service-answers
+(deftest health-service-answers-and-transitions
   (with-server-and-channel {:address 0}
     (fn [srv ch]
       (let [stub (HealthGrpc/newBlockingStub ch)
-            resp (.check stub (-> (HealthCheckRequest/newBuilder) (.build)))]
-        (is (= "SERVING" (str (.getStatus resp))))))))
+            check #(str (.getStatus (.check stub (-> (HealthCheckRequest/newBuilder) (.build)))))]
+        (is (= "SERVING" (check)))
+        (health/set-status! srv :not-serving)
+        (is (= "NOT_SERVING" (check)))
+        (health/set-status! srv :serving)
+        (is (= "SERVING" (check)))))))
+
+(deftest handlers-run-on-virtual-threads-by-default
+  (with-server-and-channel {:address 0}
+    (fn [_ ch]
+      (let [seen (promise)
+            srv2 (-> (server/server
+                      {:services [{:service g/Greeter
+                                   :handlers {:say-hello
+                                              (fn [req]
+                                                (deliver seen (.isVirtual (Thread/currentThread)))
+                                                (reply "vt"))}}]
+                       :address 0})
+                     server/start)
+            ch2 (client/channel (str "localhost:" (server/port srv2)) {:plaintext true})]
+        (try
+          ((:say-hello (client/client ch2 g/greeter-methods {:deadline-ms 5000}))
+           (g/HelloRequest->proto {:name "x"}))
+          (is (true? (deref seen 5000 ::timeout)))
+          (finally
+            (client/shutdown ch2 {:grace-ms 1000})
+            (server/shutdown srv2 {:grace-ms 1000})))))))
+
+(deftest aggressive-keepalives-survive-when-permitted
+  (testing "client pings far below gRPC's 5-minute default permit stay alive
+            because the server grants the permit — the preset pairing"
+    (let [srv (-> (server/server {:services [greeter-service]
+                                  :address 0
+                                  :permit-keepalive {:time-ms 100 :without-calls true}})
+                  server/start)
+          ch (client/channel (str "localhost:" (server/port srv))
+                             {:plaintext true
+                              :keepalive {:time-ms 150 :timeout-ms 1000 :without-calls true}})
+          calls (client/client ch g/greeter-methods {:deadline-ms 5000})]
+      (try
+        (is (= "Hello a" (:message (g/proto->HelloReply ((:say-hello calls) (g/HelloRequest->proto {:name "a"}))))))
+        (Thread/sleep 1200) ; several ping intervals on an idle connection
+        (is (= "Hello b" (:message (g/proto->HelloReply ((:say-hello calls) (g/HelloRequest->proto {:name "b"}))))))
+        (finally
+          (client/shutdown ch {:grace-ms 1000})
+          (server/shutdown srv {:grace-ms 1000}))))))
 
 (deftest unimplemented-method-answers-unimplemented
   (with-server-and-channel {:address 0}

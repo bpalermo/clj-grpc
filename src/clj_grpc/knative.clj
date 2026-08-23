@@ -24,7 +24,12 @@
   ([] (server-opts nil))
   ([overrides]
    (merge {:health true
-           :reflection true}
+           :reflection true
+           ;; Paired with channel-opts' 30s client pings: gRPC's DEFAULT
+           ;; permit is 5 minutes, and a client pinging faster than the server
+           ;; permits gets GOAWAY too_many_pings. Presets that fight each
+           ;; other are worse than no presets.
+           :permit-keepalive {:time-ms 30000 :without-calls true}}
           overrides)))
 
 (defn channel-opts
