@@ -15,7 +15,9 @@
   meaningless across an RPC's thread hops.
 
   bazel run //bench:run          ; full criterium
-  bazel run //bench:run -- quick ; quick-bench"
+  bazel run //bench:run -- quick ; quick-bench
+  bazel run //bench:run -- load  ; 32 concurrent callers, throughput mode —
+                                 ; the lens that ranks executor choices"
   (:require [acme.greeter.greeter :as g]
             [clj-grpc.client :as client]
             [clj-grpc.server :as server]
@@ -95,6 +97,48 @@
 
 ;; ---------------------------------------------------------------------------
 
+(defn- start-grpc-with [server-opts]
+  (let [srv (-> (server/server
+                 (merge {:services [{:service g/Greeter
+                                     :handlers {:say-hello
+                                                (fn [req]
+                                                  (g/HelloReply->proto
+                                                   {:message (str "Hello " (:name (g/proto->HelloRequest req)))}))}}]
+                         :address 0
+                         :health false}
+                        server-opts))
+                server/start)
+        ch (client/channel (str "localhost:" (server/port srv)) {:plaintext true})
+        calls (client/client ch g/greeter-methods {:deadline-ms 60000})]
+    {:server srv :channel ch :call (:say-hello calls)}))
+
+(defn- throughput
+  "calls/second across `threads` platform threads hammering one channel."
+  [call threads per-thread]
+  (let [req (g/HelloRequest->proto {:name "load"})
+        _ (dotimes [_ 2000] (call req))          ; warm
+        t0 (System/nanoTime)
+        workers (mapv (fn [_]
+                        (.start (Thread/ofPlatform)
+                                (fn [] (dotimes [_ per-thread] (call req)))))
+                      (range threads))]
+    (run! #(.join ^Thread %) workers)
+    (let [secs (/ (double (- (System/nanoTime) t0)) 1e9)]
+      (long (/ (* threads per-thread) secs)))))
+
+(defn- run-load []
+  (println "load mode: 32 platform threads x 3000 unary calls, one shared channel\n")
+  (println "| server executor | calls/sec |")
+  (println "|---|---|")
+  (doseq [[label opts] [["virtual threads (default)" {}]
+                        ["direct (event loop)" {:executor :direct}]]]
+    (let [{:keys [server channel call]} (start-grpc-with opts)]
+      (try
+        (println (format "| %s | %,d |" label (throughput call 32 3000)))
+        (finally
+          (client/shutdown channel {:grace-ms 2000})
+          (server/shutdown server {:grace-ms 2000}))))))
+
 (def ^:private quick? (atom false))
 
 (defn- mean-us [f]
@@ -102,6 +146,9 @@
     (/ (* 1e9 (double (first (:mean result)))) 1000.0)))
 
 (defn -main [& args]
+  (when (some #{"load"} args)
+    (run-load)
+    (System/exit 0))
   (when (some #{"quick"} args) (reset! quick? true))
   (println "clj-grpc RPC benchmark: gRPC (h2c, non-shaded Netty) vs REST (Pedestal/Jetty + JSON)")
   (println "loopback, persistent connections, sequential; mean round-trip latency.")

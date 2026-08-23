@@ -148,6 +148,28 @@
             (client/shutdown ch2 {:grace-ms 1000})
             (server/shutdown srv2 {:grace-ms 1000})))))))
 
+(deftest direct-executor-serves
+  (testing "handlers on the event loop answer, and are NOT virtual threads"
+    (let [on-vt (promise)
+          srv (-> (server/server {:services [{:service g/Greeter
+                                              :handlers {:say-hello
+                                                         (fn [req]
+                                                           (deliver on-vt (.isVirtual (Thread/currentThread)))
+                                                           (reply "direct"))}}]
+                                  :address 0
+                                  :executor :direct})
+                  server/start)
+          ch (client/channel (str "localhost:" (server/port srv)) {:plaintext true})]
+      (try
+        (is (= "direct"
+               (:message (g/proto->HelloReply
+                          ((:say-hello (client/client ch g/greeter-methods {:deadline-ms 5000}))
+                           (g/HelloRequest->proto {:name "d"}))))))
+        (is (false? (deref on-vt 5000 ::timeout)))
+        (finally
+          (client/shutdown ch {:grace-ms 1000})
+          (server/shutdown srv {:grace-ms 1000}))))))
+
 (deftest aggressive-keepalives-survive-when-permitted
   (testing "client pings far below gRPC's 5-minute default permit stay alive
             because the server grants the permit — the preset pairing"
