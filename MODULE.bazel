@@ -8,13 +8,8 @@ module(
     version = "0.1.0",
 )
 
-# DELETE THE OVERRIDE once rules_clj is in the BCR.
+# The ruleset, from the Bazel Central Registry.
 bazel_dep(name = "rules_clj", version = "0.1.0")
-git_override(
-    module_name = "rules_clj",
-    branch = "main",
-    remote = "https://github.com/bpalermo/rules_clj.git",
-)
 
 native_toolchains = use_extension(
     "@rules_clj//clojure:extensions.bzl",
