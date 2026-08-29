@@ -1,0 +1,19 @@
+load("@protobuf//bazel:java_proto_library.bzl", "java_proto_library")
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
+
+package(default_visibility = ["//visibility:public"])
+
+proto_library(
+    name = "echo_proto",
+    srcs = ["example/echo/echo.proto"],
+    strip_import_prefix = "/examples/proto",
+)
+
+# protoc's Java classes for the echo service. On the classpath they flip the
+# generated namespace's class hints from DynamicMessage to the generated
+# com.example.echo.* classes — the fast path. Optional: drop this dep and
+# everything still works on the DynamicMessage arm.
+java_proto_library(
+    name = "echo_java_proto",
+    deps = [":echo_proto"],
+)

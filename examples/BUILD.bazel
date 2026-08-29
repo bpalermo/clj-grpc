@@ -1,0 +1,76 @@
+load("@rules_clj//clojure:defs.bzl", "clj_binary", "clj_library", "clj_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# The generated namespace: checked-in protoc-gen-clojure 0.4.0 output, produced
+# the same way as the test fixture. To regenerate:
+#   cd examples/proto && protoc --clojure_out=../gen example/echo/echo.proto
+clj_library(
+    name = "echo_gen",
+    srcs = glob(["gen/**/*.clj"]),
+    namespaces = ["example.echo.echo"],
+    strip_prefix = "examples/gen",
+    deps = [
+        "//src:clj_grpc",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+clj_library(
+    name = "echo_lib",
+    srcs = glob(["src/**/*.clj"]),
+    namespaces = [
+        "example.echo.server",
+        "example.echo.client",
+    ],
+    strip_prefix = "examples/src",
+    deps = [
+        ":echo_gen",
+        # protoc's Java classes: with these on the classpath the generated
+        # namespace and the service layer resolve the hinted com.example.echo.*
+        # prototypes instead of DynamicMessage. Optional either way.
+        "//examples/proto:echo_java_proto",
+        "//src:clj_grpc",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+# bazel run //examples:server — h2c on $PORT (default 8080), Knative preset.
+clj_binary(
+    name = "server",
+    main = "example.echo.server",
+    tags = ["manual"],
+    deps = [":echo_lib"],
+)
+
+# bazel run //examples:client [-- host:port] — every streaming shape once.
+clj_binary(
+    name = "client",
+    main = "example.echo.client",
+    tags = ["manual"],
+    deps = [":echo_lib"],
+)
+
+clj_library(
+    name = "example_e2e_test_lib",
+    srcs = glob(["test/**/*.clj"]),
+    namespaces = ["example.echo.example-e2e-test"],
+    strip_prefix = "examples/test",
+    deps = [
+        ":echo_lib",
+        "//src:clj_grpc",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+# The example's own round trip on every `bazel test //...`, so the example
+# cannot drift from the library.
+clj_test(
+    name = "example_e2e_test",
+    ns = "example.echo.example-e2e-test",
+    deps = [":example_e2e_test_lib"],
+)
