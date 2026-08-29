@@ -59,6 +59,7 @@ clj_library(
     ],
     strip_prefix = "bench",
     deps = [
+        ":soak_metrics_lib",
         "//src:clj_grpc",
         "//test:fixtures",
         "@deps//:com_github_bpalermo_clj_protobuf",
@@ -88,12 +89,24 @@ clj_binary(
 # The gRPC soak arms are the coldstart server above; this is the Pedestal
 # equivalent with the same echo semantics, $PORT, and a /healthz probe.
 
+# Heap/uptime /metrics endpoint, JDK built-ins only — shared by the REST arm
+# and the coldstart (gRPC) servers so every soak arm reports heap, native
+# image included.
+clj_library(
+    name = "soak_metrics_lib",
+    srcs = ["clj_grpc/soak/metrics.clj"],
+    namespaces = ["clj-grpc.soak.metrics"],
+    strip_prefix = "bench",
+    deps = ["@deps//:org_clojure_clojure"],
+)
+
 clj_library(
     name = "soak_lib",
     srcs = ["clj_grpc/soak/rest_server.clj"],
     namespaces = ["clj-grpc.soak.rest-server"],
     strip_prefix = "bench",
     deps = [
+        ":soak_metrics_lib",
         "@deps//:io_pedestal_pedestal_jetty",
         "@deps//:io_pedestal_pedestal_service",
         "@deps//:metosin_jsonista",

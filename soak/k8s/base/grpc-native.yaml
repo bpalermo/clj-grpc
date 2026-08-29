@@ -38,6 +38,8 @@ spec:
           ports:
             - name: h2c
               containerPort: 8080
+            - name: metrics
+              containerPort: 9090
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -76,3 +78,6 @@ spec:
     - name: h2c
       port: 8080
       targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
