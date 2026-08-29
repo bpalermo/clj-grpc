@@ -133,25 +133,46 @@ container port `h2c`); the client preset is plaintext + wait-for-ready +
 keepalives — the activator-in-path, scale-from-zero posture where the first
 request must tolerate a pod that is still being summoned.
 
-## Cold start, and the native-image blocker
+## Cold start, and the Netty leaf
 
-Deploy-shaped AppCDS cuts time-to-first-RPC 2.9 s → 1.25 s (−57%); the
-`//bench:coldstart` harness measures spawn-to-first-success with a warm
-prober. rules_clj's own CDS rejection is build-action-specific (uncacheable
-archives poison action keys); in a container the archive is dumped against
-jars whose timestamps never move, so the objection does not transfer.
-
-Native-image is blocked, precisely: Clojure-compiled code initializes
+Native-image works, and the design that unblocked it is now load-bearing API
+structure. The collision was precise: Clojure-compiled code initializes
 referenced classes eagerly (fn-class `<clinit>` → `RT.classForName`
 initialize=true) at namespace load — build time under
 `--initialize-at-build-time` — while Netty's shipped native-image metadata
-mandates run-time init for its native/Unsafe-touching classes, correctly.
-Moving Netty references out of `:import` into fn bodies (done; kept — it is
-semantics-neutral) eliminates most of the collision but not the class
-constants. The finishing design: move all Netty-referencing construction into
-leaf namespaces loaded via `requiring-resolve` at first call, marked
-initialize-at-run-time, with their classes registered for reachability. A
-contained project, banked until the cold-start payoff is demanded.
+mandates run-time init for its native/Unsafe-touching classes, correctly. The
+resolution: every Netty and grpc-netty construction lives in one leaf
+namespace, `clj-grpc.impl.netty`, which transport/server/client reach only
+through `requiring-resolve` at first construction. The leaf's classes are
+marked initialize-at-run-time (package `clj_grpc.impl`) and its init class is
+registered for reflection so the runtime `require` can find it; the class
+*values* it resolves (the six channel classes) are the only other reflection
+entries needed, because the leaf deliberately avoids `:import` — imports
+intern through `Class.forName`, fully-qualified interop compiles to direct
+method references. The jar ships this as auto-discovered
+`META-INF/native-image` config, which also fills two upstream gaps grpc-netty
+leaves open (it publishes no metadata; only grpc-netty-shaded does):
+`io.grpc.netty` wholesale, because `NettyServerBuilder.<clinit>` probes
+`Epoll.<clinit>` — a JNI load — at class init; and `io.netty.handler.ssl`,
+because `JdkSslServerContext.<clinit>` parses a PEM and allocates ByteBufs.
+
+`lazy_netty_test` pins both halves of the contract on the JVM: requiring the
+API namespaces must not load the leaf, and no source file outside the leaf
+may mention a Netty package. On the JVM the indirection is behaviorally
+inert — the leaf loads at first construction, event loops, UDS, everything
+as before.
+
+Measured with the `//bench:coldstart` harness (spawn-to-first-success, warm
+prober, fresh channel per probe — a reused channel's reconnect backoff
+quantizes the reading, which is also why two earlier numbers moved): plain
+jar ~1.75 s, AppCDS ~1.71 s, native image ~79 ms — 22×, and the binary
+serves Unix domain sockets through the embedded epoll JNI transport. The
+honest prober withdrew the earlier −57% AppCDS claim: this startup is
+dominated by running Clojure's class initializers, which CDS cannot skip.
+Native-image caveats for consumers: AOT everything (no compiler in the
+image), and prefer the embedded-descriptor arm of generated code — the
+class-hinted arm rides protobuf-java's reflection, which wants per-message
+registration the library does not ship.
 
 ## Measured, not asserted
 

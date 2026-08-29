@@ -51,12 +51,12 @@
   handlers block — that is the model — and grpc's default shared pool is sized
   for handlers that never do."
   (:require [clj-grpc.transport :as transport])
-  ;; NettyServerBuilder is fully-qualified, not imported: its <clinit> chains
-  ;; into Netty's event-loop classes (io.grpc.netty.Utils), and Clojure's
-  ;; eager import-time initialization would run that at image build under
-  ;; native-image. See transport.clj.
-  (:import [io.grpc Server ServerInterceptor ServerServiceDefinition
-            Status StatusRuntimeException]
+  ;; No Netty or grpc-netty type appears here: the NettyServerBuilder is
+  ;; constructed inside clj-grpc.impl.netty (loaded via requiring-resolve at
+  ;; first construction) and comes back as the generic ServerBuilder, on which
+  ;; everything below is transport-agnostic. See transport.clj for why.
+  (:import [io.grpc Server ServerBuilder ServerInterceptor
+            ServerServiceDefinition Status StatusRuntimeException]
            [io.grpc.protobuf.services HealthStatusManager ProtoReflectionServiceV1]
            [io.grpc.stub ServerCalls ServerCalls$BidiStreamingMethod
             ServerCalls$ClientStreamingMethod ServerCalls$ServerStreamingMethod
@@ -164,21 +164,16 @@
         transport (transport/resolve-transport
                    (if (and unix? (nil? transport)) :epoll transport))
         _         (transport/server-channel-type transport unix?) ; eager UDS/nio validation
-        builder   (doto (io.grpc.netty.NettyServerBuilder/forAddress addr)
-                    (.channelType (transport/server-channel-type transport unix?))
-                    (.bossEventLoopGroup (transport/event-loop-group transport 1))
-                    (.workerEventLoopGroup (transport/event-loop-group transport 0)))
+        ^ServerBuilder builder
+        ((requiring-resolve 'clj-grpc.impl.netty/server-builder)
+         addr {:transport transport :unix? unix?
+               :permit-keepalive permit-keepalive})
         health-mgr (when health (HealthStatusManager.))
         owned-executor (when (nil? executor)
                          (Executors/newVirtualThreadPerTaskExecutor))]
     (if (= :direct executor)
       (.directExecutor builder)
       (.executor builder ^Executor (or executor owned-executor)))
-    (when-let [{:keys [time-ms without-calls]} permit-keepalive]
-      (when time-ms
-        (.permitKeepAliveTime builder (long time-ms) TimeUnit/MILLISECONDS))
-      (when (some? without-calls)
-        (.permitKeepAliveWithoutCalls builder (boolean without-calls))))
     (when max-inbound-message-size
       (.maxInboundMessageSize builder (int max-inbound-message-size)))
     (when tls

@@ -18,7 +18,14 @@
   (with-open [s (ServerSocket. 0)] (.getLocalPort s)))
 
 (defn- first-rpc-ms
-  "Spawn cmd with PORT=port; poll until say-hello answers; kill; return ms."
+  "Spawn cmd with PORT=port; poll until say-hello answers; kill; return ms.
+
+  A FRESH channel per attempt, deliberately: a reused channel carries gRPC's
+  reconnect backoff (~1s with jitter) from the first refused connection, which
+  quantizes the measurement — invisible when an arm takes seconds, but the
+  dominant term for one that is ready in tens of milliseconds. A refused
+  connect without wait-for-ready fails in ~1ms, so the probe granularity is
+  channel setup plus one failed call."
   [cmd port]
   (let [pb (doto (ProcessBuilder. ^java.util.List cmd)
              (.redirectOutput ProcessBuilder$Redirect/DISCARD)
@@ -26,20 +33,20 @@
     (.put (.environment pb) "PORT" (str port))
     (let [t0 (System/nanoTime)
           proc (.start pb)
-          ch (client/channel (str "localhost:" port) {:plaintext true})
-          call (:say-hello (client/client ch g/greeter-methods
-                                          {:deadline-ms 250 :wait-for-ready true}))
           req (g/HelloRequest->proto {:name "cold"})]
       (try
         (loop []
           (when-not (.isAlive proc)
             (throw (ex-info "server process died before serving" {:cmd cmd})))
-          (let [ok (try (some? (call req)) (catch Throwable _ false))]
+          (let [ch (client/channel (str "localhost:" port) {:plaintext true})
+                call (:say-hello (client/client ch g/greeter-methods
+                                                {:deadline-ms 250}))
+                ok (try (some? (call req)) (catch Throwable _ false))]
+            (client/shutdown ch {:grace-ms 100})
             (if ok
               (/ (double (- (System/nanoTime) t0)) 1e6)
               (recur))))
         (finally
-          (client/shutdown ch {:grace-ms 500})
           (.destroy proc)
           (.waitFor proc))))))
 

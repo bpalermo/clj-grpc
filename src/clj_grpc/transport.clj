@@ -4,22 +4,27 @@
 
   Non-shaded Netty 4.2, whose event-loop API is MultiThreadIoEventLoopGroup
   over an IoHandler factory — the 4.1-era EpollEventLoopGroup constructors are
-  deprecated shells around the same thing."
-  ;; Netty classes are deliberately NOT in :import: Clojure initializes
-  ;; imported classes eagerly at namespace load, and under native-image's
-  ;; --initialize-at-build-time that initializes Netty's native-library and
-  ;; Unsafe-touching statics during IMAGE BUILD — which Netty's own
-  ;; native-image metadata forbids, correctly (baked JNI handles are garbage
-  ;; at run time). Fully-qualified references in fn bodies initialize lazily,
-  ;; at first call, which is run time. Same rule in server.clj/client.clj.
-  (:import [io.netty.channel.unix DomainSocketAddress]
-           [io.netty.util.concurrent DefaultThreadFactory]
-           [java.net InetSocketAddress SocketAddress]))
+  deprecated shells around the same thing.
+
+  No Netty class appears in this namespace (or in server/client): everything
+  Netty lives in clj-grpc.impl.netty, reached through requiring-resolve at
+  first construction. That is the native-image contract — Clojure initializes
+  referenced classes when a namespace loads, which under
+  --initialize-at-build-time is image build time, where Netty's own metadata
+  (correctly) forbids it. Deferring the load to first use makes it run time in
+  both worlds. lazy_netty_test pins the contract."
+  (:import [java.net InetSocketAddress SocketAddress]))
 
 (set! *warn-on-reflection* true)
 
+(defn- netty
+  "Resolve a clj-grpc.impl.netty fn, loading the namespace on first use. All
+  callers are construction-time paths; the var lookup cost is irrelevant."
+  [fn-name]
+  (requiring-resolve (symbol "clj-grpc.impl.netty" fn-name)))
+
 (defn epoll-available? []
-  (io.netty.channel.epoll.Epoll/isAvailable))
+  ((netty "epoll-available?")))
 
 (defn resolve-transport
   "Turn the :transport opt into a concrete choice. :auto prefers epoll and
@@ -34,29 +39,24 @@
              (throw (ex-info "epoll transport requested but unavailable"
                              {:clj-grpc/error :transport-unavailable
                               :transport :epoll}
-                             (io.netty.channel.epoll.Epoll/unavailabilityCause))))))
+                             ((netty "epoll-unavailability-cause")))))))
 
 (defn event-loop-group
-  "Daemon threads, deliberately — grpc's own default groups are daemon too. A
-  non-daemon event loop pins the JVM after main returns, which surfaces as
-  'tests pass, process never exits' the first time anything runs outside a
-  harness that calls System/exit."
+  "An event loop group for the transport, on daemon threads — see
+  clj-grpc.impl.netty/event-loop-group for why daemon is non-negotiable."
   [transport threads]
-  (io.netty.channel.MultiThreadIoEventLoopGroup.
-   (int (or threads 0))
-   (DefaultThreadFactory. (str "clj-grpc-" (name transport)) true)
-   (case transport
-     :epoll (io.netty.channel.epoll.EpollIoHandler/newFactory)
-     :nio   (io.netty.channel.nio.NioIoHandler/newFactory))))
+  ((netty "event-loop-group") transport threads))
 
 (defn unix
   "A Unix domain socket address. Serving or dialing one requires the epoll
   transport; the server/client builders validate that eagerly."
-  ^DomainSocketAddress [^String path]
-  (DomainSocketAddress. path))
+  ^SocketAddress [^String path]
+  ((netty "unix-socket-address") path))
 
 (defn unix-address? [addr]
-  (instance? DomainSocketAddress addr))
+  (and (some? addr)
+       (not (instance? InetSocketAddress addr))
+       ((netty "unix-address?") addr)))
 
 (defn ->address
   "Coerce the :address / target forms to a SocketAddress: an existing
@@ -74,20 +74,8 @@
 
 (defn server-channel-type
   ^Class [transport unix?]
-  (case transport
-    :epoll (if unix? io.netty.channel.epoll.EpollServerDomainSocketChannel io.netty.channel.epoll.EpollServerSocketChannel)
-    :nio   (if unix?
-             (throw (ex-info "Unix domain sockets require the epoll transport"
-                             {:clj-grpc/error :transport-unavailable
-                              :transport :nio :address :unix}))
-             io.netty.channel.socket.nio.NioServerSocketChannel)))
+  ((netty "server-channel-class") transport unix?))
 
 (defn client-channel-type
   ^Class [transport unix?]
-  (case transport
-    :epoll (if unix? io.netty.channel.epoll.EpollDomainSocketChannel io.netty.channel.epoll.EpollSocketChannel)
-    :nio   (if unix?
-             (throw (ex-info "Unix domain sockets require the epoll transport"
-                             {:clj-grpc/error :transport-unavailable
-                              :transport :nio :address :unix}))
-             io.netty.channel.socket.nio.NioSocketChannel)))
+  ((netty "client-channel-class") transport unix?))

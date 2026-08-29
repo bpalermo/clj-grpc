@@ -77,6 +77,24 @@ clj_test(
     deps = TEST_DEPS + [":knative_preset_test_lib"],
 )
 
+# Pins the native-image contract: requiring the API namespaces must not load
+# the Netty leaf (this leg — one namespace per test JVM), and no source file
+# outside the leaf may mention a Netty package (the plain-clj leg, which can
+# see the source tree).
+clj_library(
+    name = "lazy_netty_test_lib",
+    srcs = ["clj_grpc/lazy_netty_test.clj"],
+    namespaces = ["clj-grpc.lazy-netty-test"],
+    strip_prefix = "test",
+    deps = TEST_DEPS,
+)
+
+clj_test(
+    name = "lazy_netty_test",
+    ns = "clj-grpc.lazy-netty-test",
+    deps = [":lazy_netty_test_lib"],
+)
+
 clj_library(
     name = "netty_alignment_test_lib",
     srcs = ["clj_grpc/netty_alignment_test.clj"],

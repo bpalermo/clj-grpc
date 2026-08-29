@@ -8,12 +8,18 @@ clj_library(
     namespaces = [
         "clj-grpc.service",
         "clj-grpc.transport",
+        "clj-grpc.impl.netty",
         "clj-grpc.server",
         "clj-grpc.health",
         "clj-grpc.client",
         "clj-grpc.knative",
         "clj-grpc.runtime.service",
     ],
+    # The native-image contract rides in the jar: initialize-at-run-time for
+    # the Netty leaf (clj_grpc.impl) and the reflection entries its runtime
+    # loading needs. native-image discovers META-INF/native-image configs from
+    # any jar on the image classpath.
+    resources = glob(["META-INF/**"]),
     strip_prefix = "src",
     deps = [
         "@deps//:com_github_bpalermo_clj_protobuf",
