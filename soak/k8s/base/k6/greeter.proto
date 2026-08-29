@@ -1,0 +1,31 @@
+// Wire-compatible proto3 rendering of test/proto/acme/greeter/greeter.proto,
+// for k6's proto loader only — the real file is edition 2024, which k6's
+// parser does not accept. Same package, messages, field numbers, and service,
+// so the bytes on the wire are identical; keep the two in sync by hand (the
+// soak smoke fails loudly if they drift).
+syntax = "proto3";
+
+package acme.greeter;
+
+enum Greeting {
+  GREETING_UNSPECIFIED = 0;
+  GREETING_HELLO = 1;
+  GREETING_HOWDY = 2;
+}
+
+message HelloRequest {
+  string name = 1;
+  int32 repeat_count = 2;
+  Greeting greeting = 3;
+}
+
+message HelloReply {
+  string message = 1;
+}
+
+service Greeter {
+  rpc SayHello(HelloRequest) returns (HelloReply);
+  rpc SayHelloMany(HelloRequest) returns (stream HelloReply);
+  rpc CollectHellos(stream HelloRequest) returns (HelloReply);
+  rpc Chat(stream HelloRequest) returns (stream HelloReply);
+}

@@ -1,0 +1,73 @@
+name: build
+
+# The soak container images (//bazel/images): every PR proves they build on
+# the architecture the cluster runs (arm64); only main pushes, and only the
+# images whose content actually changed — the built OCI manifest's sha256 IS
+# the image digest, so comparing it against the registry's current `latest`
+# digest decides each push. An unchanged dependency graph produces an
+# identical digest and no tag churn.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  images:
+    name: soak images (arm64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-arm64
+          repository-cache: true
+          # Pull requests RESTORE caches but never SAVE them: only reviewed
+          # code should populate a cache a later trusted build consumes.
+          cache-save: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: build all three images
+        run: |
+          bazel build \
+            //bazel/images:grpc_native_image \
+            //bazel/images:grpc_jvm_image \
+            //bazel/images:rest_image
+
+      - name: log in to ghcr
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: push changed images
+        if: github.ref == 'refs/heads/main'
+        run: |
+          push_if_changed() {
+            local target="$1" manifest="$2" repo="$3"
+            local built="sha256:$(sha256sum "bazel-bin/bazel/images/${manifest}" | cut -d' ' -f1)"
+            local current
+            current=$(docker manifest inspect --verbose "ghcr.io/${repo}:latest" 2>/dev/null \
+                        | jq -r 'if type == "array" then .[0].Descriptor.digest else .Descriptor.digest end' || true)
+            if [ "${built}" = "${current}" ]; then
+              echo "${repo}: unchanged (${built}), skipping push"
+            else
+              echo "${repo}: ${current:-<absent>} -> ${built}, pushing"
+              bazel run "//bazel/images:${target}"
+            fi
+          }
+          push_if_changed grpc_native_push grpc_native_image_manifest.json bpalermo/clj-grpc/soak-grpc-native
+          push_if_changed grpc_jvm_push    grpc_jvm_image_manifest.json    bpalermo/clj-grpc/soak-grpc-jvm
+          push_if_changed rest_push        rest_image_manifest.json        bpalermo/clj-grpc/soak-rest

@@ -1,0 +1,135 @@
+load("@rules_img//img:image.bzl", "image_manifest")
+load("@rules_img//img:layer.bzl", "file_metadata", "image_layer")
+load("@rules_img//img:push.bzl", "image_push")
+
+# The three soak arms as container images, consumed by soak/ on a cluster.
+#
+# rules_img rather than Dockerfiles: hermetic, no Docker daemon, and the
+# binaries come straight from the build graph — the native binary is the same
+# //bench:coldstart_native artifact every benchmark measured. Built on the
+# arm64 CI runner these are arm64 images (the pulled bases are multi-platform
+# indexes; the build platform picks the variant), which is what talos-main
+# runs. GraalVM cannot cross-compile, so the native image's architecture IS
+# the runner's.
+#
+# Pushes are tagged {{.STABLE_GIT_COMMIT}} + latest (stamped via
+# bazel/tools/workspace_status.sh), manual so nothing pushes by accident;
+# .github/workflows/build.yaml runs them on main only, gated on the image
+# inputs having changed.
+
+package(default_visibility = ["//visibility:private"])
+
+# --------------------------------------------------------------------------
+# gRPC native: the greeter server as a GraalVM binary on a glibc base.
+# Runtime args are the measured Serial-GC sizing, scaled to the 1 Gi pod.
+
+image_layer(
+    name = "grpc_native_layer",
+    srcs = {"/coldstart-server": "//bench:coldstart_native"},
+    file_metadata = {
+        "/coldstart-server": file_metadata(mode = "0755"),
+    },
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+image_manifest(
+    name = "grpc_native_image",
+    base = "@distroless_base",
+    cmd = [
+        "-Xmx512m",
+        "-Xmn256m",
+    ],
+    entrypoint = ["/coldstart-server"],
+    layers = [":grpc_native_layer"],
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+image_push(
+    name = "grpc_native_push",
+    image = ":grpc_native_image",
+    registry = "ghcr.io",
+    repository = "bpalermo/clj-grpc/soak-grpc-native",
+    stamp = "force",
+    tag_list = [
+        "{{.STABLE_GIT_COMMIT}}",
+        "latest",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+# --------------------------------------------------------------------------
+# gRPC JVM: the identical server as its deploy jar on the distroless JRE.
+# Heap capped well under the 1 Gi pod limit; G1 is the JVM default.
+
+image_layer(
+    name = "grpc_jvm_layer",
+    srcs = {"/app.jar": "//bench:coldstart_server_deploy.jar"},
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+image_manifest(
+    name = "grpc_jvm_image",
+    base = "@distroless_java21",
+    cmd = [],
+    entrypoint = [
+        "/usr/bin/java",
+        "-Xmx512m",
+        "-jar",
+        "/app.jar",
+    ],
+    layers = [":grpc_jvm_layer"],
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+image_push(
+    name = "grpc_jvm_push",
+    image = ":grpc_jvm_image",
+    registry = "ghcr.io",
+    repository = "bpalermo/clj-grpc/soak-grpc-jvm",
+    stamp = "force",
+    tag_list = [
+        "{{.STABLE_GIT_COMMIT}}",
+        "latest",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+# --------------------------------------------------------------------------
+# REST: the Pedestal comparison arm, same echo semantics, same base and heap
+# as the gRPC JVM arm so the only variable is the stack.
+
+image_layer(
+    name = "rest_layer",
+    srcs = {"/app.jar": "//bench:soak_rest_server_deploy.jar"},
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+image_manifest(
+    name = "rest_image",
+    base = "@distroless_java21",
+    cmd = [],
+    entrypoint = [
+        "/usr/bin/java",
+        "-Xmx512m",
+        "-jar",
+        "/app.jar",
+    ],
+    layers = [":rest_layer"],
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+image_push(
+    name = "rest_push",
+    image = ":rest_image",
+    registry = "ghcr.io",
+    repository = "bpalermo/clj-grpc/soak-rest",
+    stamp = "force",
+    tag_list = [
+        "{{.STABLE_GIT_COMMIT}}",
+        "latest",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:linux"],
+)

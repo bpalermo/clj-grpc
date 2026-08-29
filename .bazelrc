@@ -10,3 +10,7 @@ build --tool_java_runtime_version=remotejdk_21
 
 test --test_output=errors
 test --verbose_failures
+
+# Stamped image tags (//bazel/images) need a git commit; Bazel provides none
+# by default. The script never fails, so this cannot break a build.
+build --workspace_status_command=bazel/tools/workspace_status.sh

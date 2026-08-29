@@ -1,0 +1,48 @@
+# The soak itself. Deliberately NOT in the kustomization: a TestRun is a
+# one-shot object — apply it to start a run, delete it to clean up; re-running
+# means delete + apply again. RATE/DURATION are edited here per run.
+#
+# The OTel env block mirrors the cluster's established k6 pattern (the
+# aether-loadtest TestRun): metrics flow to otel-collector.o11y and land in
+# Prometheus with the k6_ prefix, split per arm by the `scenario` tag.
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: clj-grpc-soak
+  namespace: clj-grpc-soak
+spec:
+  parallelism: 1
+  arguments: -o experimental-opentelemetry
+  script:
+    configMap:
+      name: k6-soak-script
+      file: soak.js
+  runner:
+    image: grafana/k6:latest
+    # The client on its own worker, away from all three servers.
+    nodeSelector:
+      kubernetes.io/hostname: main-worker-05
+    resources:
+      requests:
+        cpu: "2"
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 1Gi
+    env:
+      - name: RATE
+        value: "200"
+      - name: DURATION
+        value: 2h
+      - name: K6_OTEL_GRPC_EXPORTER_ENDPOINT
+        value: otel-collector.o11y.svc.cluster.local:4317
+      - name: K6_OTEL_GRPC_EXPORTER_INSECURE
+        value: "true"
+      - name: K6_OTEL_EXPORTER_TYPE
+        value: grpc
+      - name: K6_OTEL_METRIC_PREFIX
+        value: k6_
+      - name: K6_OTEL_SERVICE_NAME
+        value: clj-grpc-soak
+      - name: K6_OTEL_EXPORT_INTERVAL
+        value: 5s
