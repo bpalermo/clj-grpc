@@ -15,7 +15,8 @@
   I/O-thread-to-VT-handoff shape as the gRPC arms' default executor, so the
   soak can compare the two stacks under the SAME threading model and isolate
   handoff cost from protocol cost."
-  (:require [io.pedestal.http :as phttp]
+  (:require [clj-grpc.soak.metrics :as metrics]
+            [io.pedestal.http :as phttp]
             [jsonista.core :as j])
   (:import [java.util.concurrent Executors]
            [org.eclipse.jetty.server Server]
@@ -61,6 +62,7 @@
 
 (defn -main [& _]
   (let [port (or (some-> (System/getenv "PORT") Long/parseLong) 8080)]
+    (metrics/start!)
     (start port)
     (println (str "rest server listening on port " port))
     @(promise)))

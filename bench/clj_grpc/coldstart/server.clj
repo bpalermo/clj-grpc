@@ -8,10 +8,12 @@
   confirmation arm (safe here because the echo handler provably never
   blocks)."
   (:require [acme.greeter.greeter :as g]
-            [clj-grpc.server :as server])
+            [clj-grpc.server :as server]
+            [clj-grpc.soak.metrics :as metrics])
   (:gen-class))
 
 (defn -main [& _]
+  (metrics/start!)
   (-> (server/server
        (cond-> {:services [{:service g/Greeter
                             :handlers {:say-hello
