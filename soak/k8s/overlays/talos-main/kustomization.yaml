@@ -1,0 +1,44 @@
+# talos-main: 4-core arm64 workers. One arm per worker — three 1-CPU
+# Guaranteed pods on one 4-core node would saturate it and measure the
+# scheduler instead of the servers. The k6 runner (testrun.yaml) gets a
+# fourth worker.
+#
+# Reproducibility: pin each image by the digest build.yaml printed for the
+# run being soaked (replace the `latest` tags below). A rerun of the same
+# overlay then tests byte-identical servers.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: ghcr.io/bpalermo/clj-grpc/soak-grpc-native
+    newTag: latest # pin: digest sha256:... from build.yaml
+  - name: ghcr.io/bpalermo/clj-grpc/soak-grpc-jvm
+    newTag: latest # pin: digest sha256:... from build.yaml
+  - name: ghcr.io/bpalermo/clj-grpc/soak-rest
+    newTag: latest # pin: digest sha256:... from build.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: grpc-native
+    patch: |
+      - op: add
+        path: /spec/template/spec/nodeSelector
+        value: {kubernetes.io/hostname: main-worker-02}
+  - target:
+      kind: Deployment
+      name: grpc-jvm
+    patch: |
+      - op: add
+        path: /spec/template/spec/nodeSelector
+        value: {kubernetes.io/hostname: main-worker-03}
+  - target:
+      kind: Deployment
+      name: rest
+    patch: |
+      - op: add
+        path: /spec/template/spec/nodeSelector
+        value: {kubernetes.io/hostname: main-worker-04}

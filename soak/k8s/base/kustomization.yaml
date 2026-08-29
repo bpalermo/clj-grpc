@@ -1,0 +1,25 @@
+# Cluster-agnostic base: the three arms, their services, and the k6 assets.
+# A cluster gets an overlay (see ../overlays/talos-main) that pins images by
+# digest, places pods, and parameterizes the TestRun — the base never changes
+# per run, which is what makes a soak reproducible.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - grpc-native.yaml
+  - grpc-jvm.yaml
+  - rest.yaml
+
+configMapGenerator:
+  - name: k6-soak-script
+    namespace: clj-grpc-soak
+    files:
+      - k6/soak.js
+      - k6/greeter.proto
+
+generatorOptions:
+  # The k6-operator TestRun references this ConfigMap by literal name; a
+  # content-hash suffix would break the reference (kustomize cannot rewrite
+  # names inside CRDs it does not know).
+  disableNameSuffixHash: true

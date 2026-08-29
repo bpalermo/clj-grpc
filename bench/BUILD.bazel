@@ -83,6 +83,31 @@ clj_binary(
     deps = [":coldstart_lib"],
 )
 
+# ---------------------------------------------------------------------------
+# Soak: the REST comparison arm as a standalone, container-shaped server.
+# The gRPC soak arms are the coldstart server above; this is the Pedestal
+# equivalent with the same echo semantics, $PORT, and a /healthz probe.
+
+clj_library(
+    name = "soak_lib",
+    srcs = ["clj_grpc/soak/rest_server.clj"],
+    namespaces = ["clj-grpc.soak.rest-server"],
+    strip_prefix = "bench",
+    deps = [
+        "@deps//:io_pedestal_pedestal_jetty",
+        "@deps//:io_pedestal_pedestal_service",
+        "@deps//:metosin_jsonista",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+clj_binary(
+    name = "soak_rest_server",
+    main_class = "clj_grpc.soak.rest_server",
+    tags = ["manual"],
+    deps = [":soak_lib"],
+)
+
 # Steady state, same arms: what the ten-thousandth RPC costs once the JVM has
 # its JIT and the native image is running what the builder froze.
 clj_binary(
