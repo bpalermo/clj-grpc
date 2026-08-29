@@ -164,6 +164,24 @@ images built with Oracle GraalVM 21.0.12 or 25.0.4 currently fail every RPC
 to those features; CE 21.0.2 works), so they stay unmeasured until that is
 diagnosed.
 
+The throughput gap is also narrower than it looks, because the JVM buys its
+peak with cores. Same 64k-call load, server CPU metered from `/proc`
+(utime+stime, all threads), servers pinned with `taskset` to
+container-shaped budgets:
+
+| budget | native | JVM (warmed) |
+|---|---|---|
+| 1 core | 17.0–17.4k calls/s, **183 MB** peak | 16.2–17.5k calls/s, 335 MB peak |
+| 2 cores | 23.2k calls/s, 58 µs CPU/call, **183 MB** | 23.1k calls/s, 69 µs CPU/call, 434 MB |
+| unconstrained (20 cores) | 15–22k calls/s at ~2 cores, 140 µs CPU/call, **181 MB** | 23–29k calls/s at ~4 cores, 169 µs CPU/call, 644 MB |
+
+Per request, the native image consistently spends *less* CPU; the JIT's
+throughput lead exists only where spare cores exist to burn. At the 1–2-CPU
+shape a Knative pod actually gets, throughput is a wash and the native image
+does it in roughly half the memory — so for pods-per-node density, native
+wins on every axis that matters, not just cold start. The JVM's case is the
+dedicated always-on service with cores to spare and latency to shave.
+
 ## Against REST
 
 `bazel run //bench:run` measures full round trips on loopback with persistent
