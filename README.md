@@ -137,6 +137,22 @@ and generated code should run the embedded-descriptor arm — the class-hinted
 arm leans on protobuf-java reflection that a native image needs extra
 registration for.
 
+The other side of that trade is steady state. `//bench:steady` spawns the
+same two servers and measures the ten-thousandth RPC instead of the first —
+20k-call warmup, then sequential unary latency and 32-way virtual-thread
+throughput, same warm JVM client for both arms:
+
+| arm | unary p50 | p90 | p99 | 32-way throughput |
+|---|---|---|---|---|
+| JVM (warmed) | 247 µs | 302 µs | 431 µs | ~29,000 calls/s |
+| native image | 315 µs | 398 µs | 527 µs | ~18,000 calls/s |
+
+Once the JIT is warm the JVM serves ~25% lower latency and ~55% more
+throughput; the native image runs whatever the image builder froze, on Serial
+GC. So the choice is the workload's: scale-from-zero and short-lived
+processes want the 79 ms start; hot, always-on services want the JIT. Both
+numbers are honest and neither invalidates the other.
+
 ## Against REST
 
 `bazel run //bench:run` measures full round trips on loopback with persistent
