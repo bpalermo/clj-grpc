@@ -11,9 +11,10 @@
     :bidi             observer-map -> {:send! ... :close! ...}; responses
                       arrive through the caller's {:on-next ...} map"
   (:require [clj-grpc.transport :as transport])
-  ;; NettyChannelBuilder fully-qualified for the same native-image reason as
-  ;; server.clj/transport.clj.
-  (:import [io.grpc CallOptions ManagedChannel]
+  ;; No Netty type appears here: the NettyChannelBuilder is constructed inside
+  ;; clj-grpc.impl.netty (loaded via requiring-resolve at first construction)
+  ;; and comes back as the generic ManagedChannelBuilder. See transport.clj.
+  (:import [io.grpc CallOptions ManagedChannel ManagedChannelBuilder]
            [io.grpc.stub ClientCalls StreamObserver]
            [java.util.concurrent TimeUnit]))
 
@@ -41,14 +42,12 @@
                       (and (string? target) (.startsWith ^String target "unix://")))
         transport (transport/resolve-transport
                    (if (and unix? (nil? transport)) :epoll transport))
-        builder   (if unix?
-                    (io.grpc.netty.NettyChannelBuilder/forAddress (transport/->address target))
-                    (io.grpc.netty.NettyChannelBuilder/forTarget ^String target))]
+        ^ManagedChannelBuilder builder
+        ((requiring-resolve 'clj-grpc.impl.netty/channel-builder)
+         target {:transport transport :unix? unix?})]
     (cond
       (= :direct executor) (.directExecutor builder)
       executor (.executor builder ^java.util.concurrent.Executor executor))
-    (.channelType builder (transport/client-channel-type transport unix?))
-    (.eventLoopGroup builder (transport/event-loop-group transport 0))
     (if (or plaintext unix? (nil? plaintext))
       (.usePlaintext builder)
       builder)

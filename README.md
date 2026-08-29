@@ -95,26 +95,37 @@ Two measured levers, honest about their trade:
 
 Time-to-first-RPC for a cold server process — the number Knative
 scale-from-zero pays. Measured with `//bench:coldstart` (spawn to first
-successful call, warm prober, median of 5):
+successful call, warm prober, fresh channel per probe, median of 5):
 
 | arm | median | range |
 |---|---|---|
-| plain deploy jar | 2895 ms | 2648–3146 ms |
-| **AppCDS** (archive trained on server startup) | **1246 ms** | 1004–2802 ms |
-| CDS + C1-only JIT | 1307 ms | 1090–2771 ms |
+| plain deploy jar | 1750 ms | 1725–1848 ms |
+| AppCDS (archive trained through a served RPC) | 1707 ms | 1678–1798 ms |
+| **GraalVM native-image** | **79 ms** | 71–420 ms |
 
-CDS at *deploy* shape has none of the cache objections that disqualify it for
-build actions: the archive is dumped in the container against jars that never
-move again, for a −57% cold start. Train with
-`-XX:ArchiveClassesAtExit=app.jsa`, run with `-Xshare:on
--XX:SharedArchiveFile=app.jsa`.
+Two corrections over the previously published table. First, the old prober
+reused one channel, so gRPC's reconnect backoff quantized every reading; a
+fresh channel per probe removes up to a full backoff period of inflation from
+the JVM arms — and reveals that AppCDS, honestly measured, buys about 2%
+here: this workload's startup is dominated by executing Clojure's class
+initializers, which CDS cannot skip, not by parsing class files, which it
+can. The earlier −57% CDS claim was the probe grid amplifying a small
+difference and is withdrawn.
 
-A GraalVM native-image arm builds only until real Netty code is reachable:
-Clojure AOT resolves class constants with eager initialization at namespace
-load, which collides with Netty's mandatory run-time-init native-image
-metadata. The groundwork (lazy fully-qualified Netty references) is in;
-finishing requires lazily-loaded leaf namespaces plus reachability
-registration — tracked as future work in docs/design.md.
+Second, the native-image arm now **works** — 22× over the JVM, and it serves
+over Unix domain sockets through the embedded epoll JNI transport. Every
+Netty-touching construction lives in one leaf namespace
+(`clj-grpc.impl.netty`) that the API namespaces load via `requiring-resolve`
+at first construction, so under `--initialize-at-build-time` nothing
+Netty-marked initializes during image build; the jar ships the
+`META-INF/native-image` config (run-time-init for the leaf, `io.grpc.netty`,
+and `io.netty.handler.ssl`, plus the reflection entries the runtime require
+needs), which `native-image` discovers automatically. Build the sample with
+`bazel build //bench:coldstart_native`. Two consumer caveats: every namespace
+in the image must be AOT-compiled (a native image has no Clojure compiler),
+and generated code should run the embedded-descriptor arm — the class-hinted
+arm leans on protobuf-java reflection that a native image needs extra
+registration for.
 
 ## Against REST
 
