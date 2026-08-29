@@ -1,5 +1,7 @@
 # clj-grpc
 
+[![Clojars Project](https://img.shields.io/clojars/v/com.github.bpalermo/clj-grpc.svg)](https://clojars.org/com.github.bpalermo/clj-grpc)
+
 gRPC for Clojure on **non-shaded Netty**, over
 [clj-protobuf](https://github.com/bpalermo/clj-protobuf): services and clients
 built dynamically from
