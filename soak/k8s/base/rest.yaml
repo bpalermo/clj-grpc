@@ -54,11 +54,16 @@ spec:
               port: 8080
             periodSeconds: 5
             failureThreshold: 12
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 36
           livenessProbe:
             httpGet:
               path: /healthz
               port: 8080
-            initialDelaySeconds: 30
             periodSeconds: 10
       volumes:
         - name: tmp
