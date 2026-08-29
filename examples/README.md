@@ -67,3 +67,29 @@ grpcurl -plaintext -d '{"text": "hi"}' localhost:8080 example.echo.Echo/Say
 so the generated namespace resolves its class hints; drop that dep and
 everything still runs on the DynamicMessage arm — a plain Clojars consumer
 needs no protoc Java output at all.
+
+## Native image
+
+The same server, as a GraalVM binary:
+
+```sh
+bazel build //examples:echo_native
+PORT=8080 ./bazel-bin/examples/echo-server
+# echo server listening on port 8080
+```
+
+First RPC in tens of milliseconds instead of seconds — the numbers are in the
+top-level README's cold-start table. The client (JVM or another native image)
+speaks to it unchanged; CI's `native image` job builds this binary and
+round-trips `//examples:client` against it on every change.
+
+Two things make the image work, both worth copying into your own service.
+The binary is built from `:echo_embedded_lib` — the embedded-descriptor arm,
+without `echo_java_proto` — because the class-hinted arm rides protobuf-java
+reflection that a native image would need per-message registrations for. And
+every namespace in it is AOT-compiled with a `:gen-class` entry point: a
+native image has no Clojure compiler to load source with. The Netty
+run-time-initialization metadata rides inside the clj-grpc jar
+(`META-INF/native-image`), so `native-image` needs no flags beyond
+`--no-fallback --initialize-at-build-time`, which `clj_native_binary`
+supplies.
