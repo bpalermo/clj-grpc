@@ -174,6 +174,13 @@ image), and prefer the embedded-descriptor arm of generated code — the
 class-hinted arm rides protobuf-java's reflection, which wants per-message
 registration the library does not ship.
 
+The steady-state half of the trade is measured too (`//bench:steady`, same
+two servers, warm JVM client, 20k-call warmup): once the JIT is warm the JVM
+serves unary p50 ~247 µs and ~29k calls/s at 32-way against the native
+image's ~315 µs and ~18k calls/s. Native buys the start, the JIT buys the
+cruise; the README carries both tables so a consumer can pick by workload
+instead of by ideology.
+
 ## Measured, not asserted
 
 Two benchmarks, both with always-on smoke tests so they cannot rot:

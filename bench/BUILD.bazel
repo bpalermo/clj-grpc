@@ -55,6 +55,7 @@ clj_library(
     namespaces = [
         "clj-grpc.coldstart.server",
         "clj-grpc.coldstart.measure",
+        "clj-grpc.coldstart.steady",
     ],
     strip_prefix = "bench",
     deps = [
@@ -82,9 +83,17 @@ clj_binary(
     deps = [":coldstart_lib"],
 )
 
-# The native arm of the cold-start campaign. grpc-netty under native-image is
-# the known-hard part; this target exists to measure it or to document exactly
-# where it breaks.
+# Steady state, same arms: what the ten-thousandth RPC costs once the JVM has
+# its JIT and the native image is running what the builder froze.
+clj_binary(
+    name = "steady",
+    main = "clj-grpc.coldstart.steady",
+    tags = ["manual"],
+    deps = [":coldstart_lib"],
+)
+
+# The native arm of the cold-start campaign; also the subject of the steady
+# harness's native arm.
 clj_native_binary(
     name = "coldstart_native",
     binary_name = "coldstart-server",
