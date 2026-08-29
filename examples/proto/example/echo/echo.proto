@@ -1,0 +1,37 @@
+edition = "2024";
+
+package example.echo;
+
+option java_package = "com.example.echo";
+
+// The example service: one method per streaming shape, each with its own
+// request/response pair so the handler and call signatures read off the proto.
+
+message EchoRequest {
+  string text = 1;
+}
+
+message EchoReply {
+  string text = 1;
+}
+
+message RepeatRequest {
+  string text = 1;
+  int32 count = 2;
+}
+
+message SummaryReply {
+  int32 message_count = 1;
+  int32 char_count = 2;
+}
+
+service Echo {
+  // unary: one request, one reply
+  rpc Say(EchoRequest) returns (EchoReply);
+  // server streaming: one request, `count` replies
+  rpc Repeat(RepeatRequest) returns (stream EchoReply);
+  // client streaming: many requests, one summary
+  rpc Summarize(stream EchoRequest) returns (SummaryReply);
+  // bidi streaming: a reply per request
+  rpc Converse(stream EchoRequest) returns (stream EchoReply);
+}

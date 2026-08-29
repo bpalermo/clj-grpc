@@ -45,6 +45,14 @@ protobuf Messages; the generated `proto->X`/`X->proto` fns are the edges.
     :message)
 ```
 
+## Examples
+
+[`examples/`](examples/) is the full path, runnable: a `.proto` with one
+method per streaming shape, its checked-in generated namespace, a server main
+with every handler shape, and a client main with every call shape —
+`bazel run //examples:server`, then `bazel run //examples:client`. An e2e test
+keeps it honest on every `bazel test //...`.
+
 ## Unix domain sockets
 
 Both directions, epoll only (validated eagerly):
