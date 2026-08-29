@@ -124,6 +124,10 @@ clj_native_binary(
     binary_name = "coldstart-server",
     extra_args = [
         "-H:+ReportExceptionStackTraces",
+        # Static everything except glibc: distroless/base has no libz, and the
+        # image links zlib dynamically by default — found the hard way as a
+        # CrashLoop (exit 127) on the cluster.
+        "-H:+StaticExecutableWithDynamicLibC",
     ],
     jar = ":coldstart_server_deploy.jar",
     tags = ["manual"],

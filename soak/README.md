@@ -30,8 +30,10 @@ kubectl --context talos-main -n clj-grpc-soak get pods -w   # wait Ready
 ```
 
 The base (`soak/k8s/base`) is cluster-agnostic; the overlay pins images by
-digest (edit the `images:` block with the digests build.yaml printed — that
-is what makes a run reproducible later), places one arm per worker, and
+digest — that is what makes a run reproducible later. `./soak/pin-digests.sh`
+stamps the pins from the registry's current `latest` in one command (the same
+digests build.yaml prints in its run summary); commit the stamped overlay
+with the soak's results. The overlay also places one arm per worker and
 carries the k6 script + wire-compatible proto3 copy of the greeter proto
 (k6 cannot parse edition 2024) as a ConfigMap.
 
