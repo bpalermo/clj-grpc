@@ -1,4 +1,4 @@
-load("@rules_clj//clojure:defs.bzl", "clj_binary", "clj_library", "clj_test")
+load("@rules_clj//clojure:defs.bzl", "clj_binary", "clj_library", "clj_native_binary", "clj_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -53,6 +53,48 @@ clj_binary(
     main = "example.echo.client",
     tags = ["manual"],
     deps = [":echo_lib"],
+)
+
+# ---------------------------------------------------------------------------
+# Native image: the same server as a GraalVM binary.
+#
+# Built from the embedded-descriptor arm — no java_proto classes on the
+# classpath — because that arm does all field access through descriptors, with
+# no protobuf-java reflection for a native image to be missing registrations
+# for. The README's native-image section states the same caveat for consumers.
+
+clj_library(
+    name = "echo_embedded_lib",
+    srcs = glob(["src/**/*.clj"]),
+    namespaces = [
+        "example.echo.server",
+        "example.echo.client",
+    ],
+    strip_prefix = "examples/src",
+    deps = [
+        ":echo_gen",
+        "//src:clj_grpc",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+clj_binary(
+    name = "server_embedded",
+    main_class = "example.echo.server",
+    tags = ["manual"],
+    deps = [":echo_embedded_lib"],
+)
+
+# bazel build //examples:echo_native, then run the binary with $PORT. The ci
+# workflow's native job builds this and round-trips the JVM client against it,
+# so the native story cannot rot.
+clj_native_binary(
+    name = "echo_native",
+    binary_name = "echo-server",
+    jar = ":server_embedded_deploy.jar",
+    tags = ["manual"],
 )
 
 clj_library(

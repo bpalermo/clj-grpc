@@ -53,7 +53,9 @@ protobuf Messages; the generated `proto->X`/`X->proto` fns are the edges.
 method per streaming shape, its checked-in generated namespace, a server main
 with every handler shape, and a client main with every call shape —
 `bazel run //examples:server`, then `bazel run //examples:client`. An e2e test
-keeps it honest on every `bazel test //...`.
+keeps it honest on every `bazel test //...`, and `//examples:echo_native`
+builds the same server as a GraalVM native image — CI round-trips the client
+against that binary too.
 
 ## Unix domain sockets
 

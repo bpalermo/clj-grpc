@@ -67,6 +67,40 @@ jobs:
       - name: the Clojars artifact builds
         run: clojure -T:build jar
 
+  # The native-image story, kept honest: build the example server as a GraalVM
+  # binary and round-trip the JVM client against it, every streaming shape.
+  # .bazelversion's Bazel is enough — the matrix exists for the rules, not for
+  # native-image.
+  native:
+    name: native image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-native
+          repository-cache: true
+          cache-save: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: build the native example server
+        run: bazel build //examples:echo_native
+
+      - name: JVM client against the native server, every streaming shape
+        run: |
+          PORT=18080 ./bazel-bin/examples/echo-server &
+          for i in $(seq 1 50); do
+            ss -ltn | grep -q 18080 && break
+            sleep 0.2
+          done
+          bazel run //examples:client -- localhost:18080 | tee client.out
+          kill %1
+          grep -q 'say -> "echo: hello"' client.out
+          grep -q 'repeat -> \["again #1" "again #2" "again #3"\]' client.out
+          grep -q 'summarize -> {:message-count 3, :char-count 11}' client.out
+          grep -q 'converse -> \["you said: ping" "you said: pong"\]' client.out
+
   # The single check branch protection requires. A required status check is
   # matched by check-run name, which for a matrix is the generated one; bump a
   # version in the matrix and a directly-required check never reports again,
@@ -76,7 +110,7 @@ jobs:
   # failing.
   ci:
     name: ci
-    needs: [bazel, clj]
+    needs: [bazel, clj, native]
     if: always()
     runs-on: ubuntu-latest
     steps:

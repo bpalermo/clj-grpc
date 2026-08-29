@@ -15,7 +15,10 @@
   proto->X / X->proto fns are the edges, plain data is the middle."
   (:require [clj-grpc.knative :as knative]
             [clj-grpc.server :as server]
-            [example.echo.echo :as echo]))
+            [example.echo.echo :as echo])
+  ;; A real main class, so the deploy jar's manifest works as a GraalVM
+  ;; native-image entry point (//examples:echo_native).
+  (:gen-class))
 
 (defn- reply [text]
   (echo/EchoReply->proto {:text text}))
