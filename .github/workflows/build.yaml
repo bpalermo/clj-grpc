@@ -71,3 +71,19 @@ jobs:
           push_if_changed grpc_native_push grpc_native_image_manifest.json bpalermo/clj-grpc/soak-grpc-native
           push_if_changed grpc_jvm_push    grpc_jvm_image_manifest.json    bpalermo/clj-grpc/soak-grpc-jvm
           push_if_changed rest_push        rest_image_manifest.json        bpalermo/clj-grpc/soak-rest
+
+      # The digests, one place to copy from: soak/pin-digests.sh stamps the
+      # talos-main overlay with exactly these (an auto-PR would be the nicer
+      # shape, but a PR opened by GITHUB_TOKEN never triggers the required ci
+      # check, so it could never merge; a PAT would unlock that).
+      - name: digest summary
+        if: github.ref == 'refs/heads/main'
+        run: |
+          {
+            echo "### soak image digests (${GITHUB_SHA::12})"
+            echo "| image | digest |"
+            echo "|---|---|"
+            for m in grpc_native_image grpc_jvm_image rest_image; do
+              echo "| ${m%_image} | sha256:$(sha256sum bazel-bin/bazel/images/${m}_manifest.json | cut -d' ' -f1) |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
