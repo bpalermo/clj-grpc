@@ -151,7 +151,18 @@ Once the JIT is warm the JVM serves ~25% lower latency and ~55% more
 throughput; the native image runs whatever the image builder froze, on Serial
 GC. So the choice is the workload's: scale-from-zero and short-lived
 processes want the 79 ms start; hot, always-on services want the JIT. Both
-numbers are honest and neither invalidates the other.
+numbers are honest and neither invalidates the other. The native arm is also
+~2.1× smaller — 182 MB RSS against the JVM's 381 MB after the same load.
+
+What moves the native number and what does not, measured: `-O3` and
+`-march=native` change nothing (the hot path is I/O and dispatch, not
+compute); sizing the Serial GC at run time — `-Xmx1g -Xmn512m` as arguments
+to the binary — buys ~13% throughput for free. The levers that could close
+the rest of the gap, PGO and the G1 collector, need Oracle GraalVM — and
+images built with Oracle GraalVM 21.0.12 or 25.0.4 currently fail every RPC
+(`CANCELLED: Failed to read message`, isolated to the toolchain version, not
+to those features; CE 21.0.2 works), so they stay unmeasured until that is
+diagnosed.
 
 ## Against REST
 
