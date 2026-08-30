@@ -1,6 +1,6 @@
 # Raw per-step capacity tables — 2026-08-29/30 campaign
 
-Backing data for the summary in `soak/README.md` and for
+Backing data for the summary in [`../soak-results.md`](../soak-results.md) (procedure: `../../soak/README.md`) and for
 [grpc/grpc-java#13012](https://github.com/grpc/grpc-java/issues/13012).
 Setup: talos-main (arm64), identical 1-CPU/1-Gi Guaranteed pods, one arm per
 4-core worker, sequential runs, k6 `ramping-arrival-rate` 200→2400 req/s in

@@ -1,6 +1,6 @@
 # Raw streaming capacity tables — 2026-08-30
 
-Backing data for soak/README.md's streaming results. Setup: 1-CPU/1-Gi grpc-jvm pod, driver (clj-grpc.soak.stream-driver) on its own worker, persistent bidi Chat streams, absolute-schedule open-loop pacing, bounded in-flight (256/stream), per-message client-side latency. First step of every run is JIT warmup (fresh pods) — excluded from conclusions.
+Backing data for the streaming results in ../soak-results.md. Setup: 1-CPU/1-Gi grpc-jvm pod, driver (clj-grpc.soak.stream-driver) on its own worker, persistent bidi Chat streams, absolute-schedule open-loop pacing, bounded in-flight (256/stream), per-message client-side latency. First step of every run is JIT warmup (fresh pods) — excluded from conclusions.
 
 ## S1 — VT executor, 20 streams, 400–4,800 msg/s
 

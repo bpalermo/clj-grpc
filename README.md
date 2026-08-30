@@ -207,7 +207,7 @@ to the knee, and streaming throughput on identical 1-CPU pods (headlines:
 gRPC sustains 2.2× REST's requests per core; bidi streaming moves ~7.5× more
 messages per core than unary; the executor trade inverts with load). The
 harness lives in [`soak/`](soak/), raw per-step tables in
-[`soak/results/`](soak/results/).
+[`docs/results/`](docs/results/).
 
 ## Building
 
