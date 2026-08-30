@@ -14,11 +14,11 @@ resources:
 
 images:
   - name: ghcr.io/bpalermo/clj-grpc/soak-grpc-native
-    digest: sha256:3a92c5930ac60178fedcb427cd6f5ba7b88ead31d4fcdb1c1389ee83582fb895 # 0aef8661e78a
+    digest: sha256:00cccc21a9703659904a971fc0251abe635e7ce6fe23fc333f5c728e9936687c # bebfa078db93
   - name: ghcr.io/bpalermo/clj-grpc/soak-grpc-jvm
-    digest: sha256:f8acc0d2a14fd5fefc60be68d1446636a3414cec948b8a24e15f0ead2305f581 # 0aef8661e78a
+    digest: sha256:dca71dbb256c26b39d75562f61ba999b3149f597d4f879c49e956814a0c7200f # bebfa078db93
   - name: ghcr.io/bpalermo/clj-grpc/soak-rest
-    digest: sha256:19eb7d8dce0ee1c9ca23a955b5c35ec8aba0457dd536502f6c6fb8474bb85eb0 # 0aef8661e78a
+    digest: sha256:19eb7d8dce0ee1c9ca23a955b5c35ec8aba0457dd536502f6c6fb8474bb85eb0 # bebfa078db93
 
 patches:
   - target:
