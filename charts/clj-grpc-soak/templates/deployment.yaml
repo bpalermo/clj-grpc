@@ -1,0 +1,100 @@
+# One template for every arm: the three servers are deliberately identical
+# in shape — same budget, same probe posture, same security context — so the
+# only differences a reader ever has to reason about are the values.
+{{- range $name, $arm := .Values.arms }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app: {{ $name }}
+    app.kubernetes.io/part-of: clj-grpc-soak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+        app.kubernetes.io/part-of: clj-grpc-soak
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: {{ $arm.nodeSelector }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: "{{ $arm.image }}"
+          env:
+            - name: PORT
+              value: "8080"
+            {{- range $k, $v := ($arm.extraEnv | default dict) }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          ports:
+            - name: {{ if eq $arm.probe "grpc" }}h2c{{ else }}http{{ end }}
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: {{ $.Values.resources.cpu | quote }}
+              memory: {{ $.Values.resources.memory }}
+            limits:
+              cpu: {{ $.Values.resources.cpu | quote }}
+              memory: {{ $.Values.resources.memory }}
+          {{- if eq $arm.probe "grpc" }}
+          readinessProbe:
+            grpc:
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 12
+          startupProbe:
+            grpc:
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: {{ $.Values.probes.startupFailureThreshold }}
+          livenessProbe:
+            grpc:
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: {{ $.Values.probes.livenessFailureThreshold }}
+          {{- else }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 12
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: {{ $.Values.probes.startupFailureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: {{ $.Values.probes.livenessFailureThreshold }}
+          {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

@@ -1,0 +1,54 @@
+# Image references are stamped at `bazel build //charts:soak` time by
+# rules_helm's rules_img integration: each bracketed //bazel/images:*_push token
+# becomes registry/repository@sha256:... of the image actually built —
+# nothing is read from any registry, and there is no pin script to run.
+namespace: clj-grpc-soak
+
+arms:
+  grpc-native:
+    image: "{@//bazel/images:grpc_native_push}"
+    probe: grpc
+    nodeSelector: main-worker-02
+  grpc-jvm:
+    image: "{@//bazel/images:grpc_jvm_push}"
+    probe: grpc
+    nodeSelector: main-worker-03
+    # EXECUTOR=direct etc. per experiment:
+    extraEnv: {}
+  rest:
+    image: "{@//bazel/images:rest_push}"
+    probe: http
+    nodeSelector: main-worker-04
+
+# Identical budgets on every arm — the comparison IS the fixed budget.
+resources:
+  cpu: "1"
+  memory: 1Gi
+
+# Probe posture from the measured campaigns: JVM arms need minutes of
+# startup grace (cold JIT under load), and a saturated 1-CPU pod starves its
+# liveness probe — 10 minutes of tolerance keeps the kubelet from killing a
+# healthy server mid-capacity-ramp.
+probes:
+  startupFailureThreshold: 36
+  livenessFailureThreshold: 60
+
+# Where load generators run (k6 runner / stream-capacity driver).
+runner:
+  nodeSelector: main-worker-05
+
+# Per-run load objects, off by default: a run is an invocation, not standing
+# state. Enable via --set on a helm upgrade, delete by flipping back.
+testRun:
+  enabled: false
+  rate: "200"
+  duration: 2h
+  otelEndpoint: otel-collector.o11y.svc.cluster.local:4317
+
+streamJob:
+  enabled: false
+  target: grpc-jvm
+  streams: "20"
+  ramp: "400 800 1200 1600 2000 2400 2800 3200 3600 4000 4400 4800"
+  stepSeconds: "120"
+  inflight: "256"

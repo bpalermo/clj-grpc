@@ -22,36 +22,45 @@ registry's `latest` — unchanged inputs, no push, no tag churn. Tags:
 `<git-commit>` and `latest`. Bases and rules come from `bazel/images/BUILD.bazel`
 (rules_img; no Dockerfiles).
 
-## Deploying (talos-main)
+## Deploying
+
+The harness is a Helm chart (`charts/clj-grpc-soak`) built by Bazel — image
+digests in values.yaml are stamped at package time from the images the same
+build graph produced, so there is nothing to pin and no registry to consult:
 
 ```sh
-kubectl --context talos-main apply -k soak/k8s/overlays/talos-main
-kubectl --context talos-main -n clj-grpc-soak get pods -w   # wait Ready
+# pushes the three images, then installs the chart pinned to those digests
+bazel run //charts:soak.install -- --namespace clj-grpc-soak
 ```
 
-The base (`soak/k8s/base`) is cluster-agnostic; the overlay pins images by
-digest — that is what makes a run reproducible later. `./soak/pin-digests.sh`
-stamps the pins from the registry's current `latest` in one command (the same
-digests build.yaml prints in its run summary); commit the stamped overlay
-with the soak's results. The overlay also places one arm per worker and
-carries the k6 script + wire-compatible proto3 copy of the greeter proto
-(k6 cannot parse edition 2024) as a ConfigMap.
+`KUBECONFIG` passes through to the hermetic helm runner. IMPORTANT: run
+installs from a host matching the cluster architecture (talos-main is
+arm64) or from the CI-published chart — a locally built x86 image set would
+be pushed and pinned. The chart itself is also published to
+`oci://ghcr.io/bpalermo/clj-grpc/charts` by build.yaml on main; cluster-side
+installs can use that artifact directly:
+
+```sh
+helm install clj-grpc-soak oci://ghcr.io/bpalermo/clj-grpc/charts/clj-grpc-soak
+```
 
 ## Running
 
+Per-run load objects are chart values, off by default — a run is an
+invocation, not standing state:
+
 ```sh
-# start (edit RATE / DURATION in the TestRun first if needed; defaults 200/s per arm, 2h)
-kubectl --context talos-main apply -f soak/k8s/overlays/talos-main/testrun.yaml
-# watch
-kubectl --context talos-main -n clj-grpc-soak get testrun clj-grpc-soak -w
-# clean up the run (servers stay for the next one)
-kubectl --context talos-main -n clj-grpc-soak delete testrun clj-grpc-soak
+# fixed-rate soak (k6 TestRun)
+bazel run //charts:soak.upgrade -- --set testRun.enabled=true,testRun.rate=200,testRun.duration=2h
+# streaming capacity ramp (driver Job)
+bazel run //charts:soak.upgrade -- --set streamJob.enabled=true,streamJob.target=grpc-jvm
+# back to idle
+bazel run //charts:soak.upgrade
 ```
 
-k6 metrics flow through the cluster's OTel collector into Prometheus with the
-`k6_` prefix, split per arm by the `scenario` tag (`grpc_native`, `grpc_jvm`,
-`rest`). Smoke first: apply the TestRun with `DURATION=1m`, `RATE=50`, confirm
-zero check failures and metrics in Prometheus, delete, then run the real one.
+k6 metrics flow through the cluster's OTel collector into Prometheus with
+the `k6_` prefix, split per arm by the `scenario` tag; the stream driver's
+results are its Job logs.
 
 ## Grading
 

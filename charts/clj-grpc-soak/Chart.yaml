@@ -1,0 +1,14 @@
+apiVersion: v2
+name: clj-grpc-soak
+description: >-
+  The clj-grpc soak/capacity harness: three echo-server arms (gRPC
+  native-image, gRPC JVM, REST/Pedestal) on identical resource budgets, plus
+  the k6 assets and per-run load templates. Image digests are stamped from
+  the Bazel build graph at package time.
+type: application
+# Chart version: bumped by hand when the chart's shape changes. The app
+# content is identified by appVersion (stamped with the git commit) and by
+# the image digests inside values — charts are configuration, not
+# per-commit artifacts.
+version: 0.1.0
+appVersion: "{STABLE_GIT_COMMIT}"
