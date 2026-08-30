@@ -199,6 +199,16 @@ HttpClient). Mean latency, quick-mode criterium, JDK 21, Linux x86_64:
 bytes-dominated payloads. The smoke test keeps both arms serving and agreeing
 on every `bazel test //...`.
 
+## On-cluster campaigns
+
+Everything above is loopback. [`docs/soak-results.md`](docs/soak-results.md)
+carries the on-cluster campaign results — multi-hour soaks, capacity ramps
+to the knee, and streaming throughput on identical 1-CPU pods (headlines:
+gRPC sustains 2.2× REST's requests per core; bidi streaming moves ~7.5× more
+messages per core than unary; the executor trade inverts with load). The
+harness lives in [`soak/`](soak/), raw per-step tables in
+[`soak/results/`](soak/results/).
+
 ## Building
 
 Bazel (with [rules_clj](https://github.com/bpalermo/rules_clj)):
