@@ -117,6 +117,19 @@ A grpc-netty patch adding a server-side `WriteQueue.drainNow()` (upstream
 prototype) reproduced its JMH signature on-cluster: p99 −20–23% across
 1200–2200 req/s and **−64% at 2400** (1994→717 ms), goodput unchanged.
 
+**Streaming capacity** (2026-08-30, bidi Chat echo, same grpc-jvm pod, raw
+tables in `results/`): streaming moves **~15,000–16,000 msg/s on one core**
+— ~7.5× the unary gRPC plateau and ~16× REST — with per-message p50 under
+2 ms and p99 under 30 ms through 8,000 msg/s. The executors split decisively
+at streaming's limits: `:executor :direct` holds p99 2–2.5× lower than the
+VT default at every rate above 6,000 and keeps delivering at 16,000
+(38 deferred/s vs VT's 625/s) — the per-message dispatch the VT executor
+still pays is the one cost streaming cannot amortize. Full doctrine across
+every measured regime: **VT wins only low-utilization unary tails; `:direct`
+wins high-load unary, all streaming, capacity, and CPU — provided handlers
+never block.** And the library's oldest guidance is now cluster-quantified:
+one stream really does beat N unaries, by ~7.5× per core.
+
 Operational lessons baked into these manifests: liveness probes need
 saturation tolerance (a pegged 1-CPU pod starves its probe and the kubelet
 kills a healthy server — measured twice); the k6-operator initializer
