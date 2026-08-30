@@ -67,6 +67,10 @@ spec:
               path: /healthz
               port: 8080
             periodSeconds: 10
+            # Saturation tolerance: capacity ramps starve probes on a pegged
+            # 1-CPU pod; the kubelet killing a saturated-but-healthy server
+            # mid-measurement was measured, not hypothesized.
+            failureThreshold: 60
       volumes:
         - name: tmp
           emptyDir: {}

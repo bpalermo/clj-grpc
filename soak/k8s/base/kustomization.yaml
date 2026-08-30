@@ -16,6 +16,7 @@ configMapGenerator:
     namespace: clj-grpc-soak
     files:
       - k6/soak.js
+      - k6/capacity.js
       - k6/greeter.proto
 
 generatorOptions:
