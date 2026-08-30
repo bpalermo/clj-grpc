@@ -2,6 +2,21 @@
 
 Backing data for the streaming results in ../soak-results.md. Setup: 1-CPU/1-Gi grpc-jvm pod, driver (clj-grpc.soak.stream-driver) on its own worker, persistent bidi Chat streams, absolute-schedule open-loop pacing, bounded in-flight (256/stream), per-message client-side latency. First step of every run is JIT warmup (fresh pods) — excluded from conclusions.
 
+## Summary
+
+**Streaming capacity** (2026-08-30, bidi Chat echo, same grpc-jvm pod, raw
+tables in `results/`): streaming moves **~15,000–16,000 msg/s on one core**
+— ~7.5× the unary gRPC plateau and ~16× REST — with per-message p50 under
+2 ms and p99 under 30 ms through 8,000 msg/s. The executors split decisively
+at streaming's limits: `:executor :direct` holds p99 2–2.5× lower than the
+VT default at every rate above 6,000 and keeps delivering at 16,000
+(38 deferred/s vs VT's 625/s) — the per-message dispatch the VT executor
+still pays is the one cost streaming cannot amortize. Full doctrine across
+every measured regime: **VT wins only low-utilization unary tails; `:direct`
+wins high-load unary, all streaming, capacity, and CPU — provided handlers
+never block.** And the library's oldest guidance is now cluster-quantified:
+one stream really does beat N unaries, by ~7.5× per core.
+
 ## S1 — VT executor, 20 streams, 400–4,800 msg/s
 
 | offered msg/s | sent/s | echoed/s | p50ms | p99ms | p999ms | deferred/s |
