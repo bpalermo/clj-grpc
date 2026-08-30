@@ -30,7 +30,7 @@ build graph produced, so there is nothing to pin and no registry to consult:
 
 ```sh
 # pushes the three images, then installs the chart pinned to those digests
-bazel run //charts:soak.install -- --namespace clj-grpc-soak
+bazel run //charts:soak.install -- --namespace clj-grpc-soak --create-namespace
 ```
 
 `KUBECONFIG` passes through to the hermetic helm runner. IMPORTANT: run
@@ -41,7 +41,8 @@ be pushed and pinned. The chart itself is also published to
 installs can use that artifact directly:
 
 ```sh
-helm install clj-grpc-soak oci://ghcr.io/bpalermo/clj-grpc/charts/clj-grpc-soak
+helm install clj-grpc-soak oci://ghcr.io/bpalermo/clj-grpc/charts/clj-grpc-soak \
+  --namespace clj-grpc-soak --create-namespace
 ```
 
 ## Running
