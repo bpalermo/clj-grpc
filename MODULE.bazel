@@ -1,15 +1,15 @@
 # clj-grpc — gRPC on non-shaded Netty for Clojure, over clj-protobuf.
 #
 # Bazel is the build and test harness; consumers arrive via Clojars
-# (com.github.bpalermo/clj-grpc). build.clj owns the jar/pom/deploy step and
-# reads the same deps.edn.
+# (com.github.bpalermo/clj-grpc). Bazel owns the jar, the pom and the Clojars
+# upload too, since rules_clj 0.2.0: //src:clojars, reading the same deps.edn.
 module(
     name = "clj_grpc",
     version = "0.1.0",
 )
 
 # The ruleset, from the Bazel Central Registry.
-bazel_dep(name = "rules_clj", version = "0.1.0")
+bazel_dep(name = "rules_clj", version = "0.2.0")
 
 native_toolchains = use_extension(
     "@rules_clj//clojure:extensions.bzl",
