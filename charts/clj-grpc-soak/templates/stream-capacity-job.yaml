@@ -1,0 +1,60 @@
+# The bidi-streaming capacity driver (clj-grpc.soak.stream-driver rides in
+# the grpc-jvm image's jar). Per-run, off by default:
+#   bazel run //charts:soak.upgrade -- --set streamJob.enabled=true,streamJob.target=grpc-jvm
+# Results are the Job's logs.
+{{- if .Values.streamJob.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stream-capacity
+  namespace: {{ .Values.namespace }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: stream-capacity
+        app.kubernetes.io/part-of: clj-grpc-soak
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: {{ .Values.runner.nodeSelector }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: driver
+          # Same digest-stamped image as the grpc-jvm arm.
+          image: "{{ (index .Values.arms "grpc-jvm").image }}"
+          command: ["/usr/bin/java", "-Xmx768m", "-cp", "/app.jar", "clojure.main", "-m", "clj-grpc.soak.stream-driver"]
+          env:
+            - name: TARGET_ADDR
+              value: "{{ .Values.streamJob.target }}.{{ .Values.namespace }}.svc.cluster.local:8080"
+            - name: STREAMS
+              value: {{ .Values.streamJob.streams | quote }}
+            - name: RAMP
+              value: {{ .Values.streamJob.ramp | quote }}
+            - name: STEP_SECONDS
+              value: {{ .Values.streamJob.stepSeconds | quote }}
+            - name: INFLIGHT
+              value: {{ .Values.streamJob.inflight | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "2"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

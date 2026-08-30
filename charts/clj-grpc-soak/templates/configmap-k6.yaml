@@ -1,0 +1,12 @@
+# The k6 assets ride in the chart (files/k6/): the scripts and the
+# wire-compatible proto3 copy of the greeter proto (k6 cannot parse
+# edition 2024). Name is fixed — the TestRun references it literally.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-soak-script
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/part-of: clj-grpc-soak
+data:
+{{ (.Files.Glob "clj-grpc-soak/files/k6/*").AsConfig | indent 2 }}

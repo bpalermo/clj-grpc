@@ -1,0 +1,20 @@
+{{- range $name, $arm := .Values.arms }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app.kubernetes.io/part-of: clj-grpc-soak
+spec:
+  selector:
+    app: {{ $name }}
+  ports:
+    - name: {{ if eq $arm.probe "grpc" }}h2c{{ else }}http{{ end }}
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+{{- end }}

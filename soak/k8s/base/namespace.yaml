@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: clj-grpc-soak
-  labels:
-    app.kubernetes.io/part-of: clj-grpc-soak

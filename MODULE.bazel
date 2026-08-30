@@ -72,3 +72,11 @@ pull(
 
 # @platforms for the linux-only constraints on the image targets.
 bazel_dep(name = "platforms", version = "1.1.0")
+
+# The soak Helm chart (//charts). rules_helm has a native rules_img
+# integration: image digests land in values.yaml straight from the build
+# graph, which is what retired the pin-digests script. Dev-only for the same
+# reason as rules_img — consumers get a Clojars jar, never a chart — and
+# because its Go toolchain (rules_go + gazelle) must not enter consumers'
+# graphs.
+bazel_dep(name = "rules_helm", version = "0.31.0", dev_dependency = True)

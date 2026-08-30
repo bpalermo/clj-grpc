@@ -44,6 +44,13 @@ jobs:
             //bazel/images:grpc_jvm_image \
             //bazel/images:rest_image
 
+      # The soak Helm chart packages the digests of the images built above
+      # into its values — building it on every PR proves the templating and
+      # the rules_img digest wiring (the digest_stamp_test guards the
+      # untyped rules_helm<->rules_img contract).
+      - name: build the soak chart
+        run: bazel build //charts:soak && bazel test //charts:digest_stamp_test
+
       - name: log in to ghcr
         if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v4
@@ -72,10 +79,17 @@ jobs:
           push_if_changed grpc_jvm_push    grpc_jvm_image_manifest.json    bpalermo/clj-grpc/soak-grpc-jvm
           push_if_changed rest_push        rest_image_manifest.json        bpalermo/clj-grpc/soak-rest
 
-      # The digests, one place to copy from: soak/pin-digests.sh stamps the
-      # talos-main overlay with exactly these (an auto-PR would be the nicer
-      # shape, but a PR opened by GITHUB_TOKEN never triggers the required ci
-      # check, so it could never merge; a PAT would unlock that).
+      # The chart, with the arm64 digests of the images just pushed baked
+      # into its values, published to ghcr as an OCI artifact. Chart version
+      # is the hand-bumped semver in Chart.yaml; pushing the same version
+      # again overwrites it in place, which is fine for a harness chart.
+      - name: publish the soak chart
+        if: github.ref == 'refs/heads/main'
+        env:
+          HELM_REGISTRY_USERNAME: ${{ github.actor }}
+          HELM_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: bazel run //charts:soak.push_registry
+
       - name: digest summary
         if: github.ref == 'refs/heads/main'
         run: |

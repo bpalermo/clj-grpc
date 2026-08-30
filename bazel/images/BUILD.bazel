@@ -17,7 +17,7 @@ load("@rules_img//img:push.bzl", "image_push")
 # .github/workflows/build.yaml runs them on main only, gated on the image
 # inputs having changed.
 
-package(default_visibility = ["//visibility:private"])
+package(default_visibility = ["//charts:__pkg__"])
 
 # --------------------------------------------------------------------------
 # gRPC native: the greeter server as a GraalVM binary on a glibc base.

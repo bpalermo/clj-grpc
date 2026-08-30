@@ -1,0 +1,38 @@
+load("@rules_helm//helm:defs.bzl", "helm_chart")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+package(default_visibility = ["//visibility:private"])
+
+# The soak harness chart. Building it stamps every image reference in
+# values.yaml with the digest of the image actually built (rules_helm's
+# rules_img aspect: digest = sha256 of the image manifest) — the chart can
+# never reference an image that was not just produced by this same graph.
+#
+# `bazel run :soak.install` pushes the three images and then installs the
+# chart pinned to those digests; `:soak.push` additionally publishes the
+# chart itself to ghcr as an OCI artifact (charts/ prefix, per convention).
+helm_chart(
+    name = "soak",
+    chart = "clj-grpc-soak/Chart.yaml",
+    files = glob(["clj-grpc-soak/files/**"]),
+    images = [
+        "//bazel/images:grpc_jvm_push",
+        "//bazel/images:grpc_native_push",
+        "//bazel/images:rest_push",
+    ],
+    registry_url = "oci://ghcr.io/bpalermo/clj-grpc/charts",
+    stamp = 1,
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:linux"],
+    templates = glob(["clj-grpc-soak/templates/**"]),
+    values = "clj-grpc-soak/values.yaml",
+    deps = None,
+)
+
+sh_test(
+    name = "digest_stamp_test",
+    srcs = ["digest_stamp_test.sh"],
+    args = ["$(rootpath :soak)"],
+    data = [":soak"],
+    target_compatible_with = ["@platforms//os:linux"],
+)

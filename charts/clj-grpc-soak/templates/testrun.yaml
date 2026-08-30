@@ -1,15 +1,13 @@
-# The soak itself. Deliberately NOT in the kustomization: a TestRun is a
-# one-shot object — apply it to start a run, delete it to clean up; re-running
-# means delete + apply again. RATE/DURATION are edited here per run.
-#
-# The OTel env block mirrors the cluster's established k6 pattern (the
-# aether-loadtest TestRun): metrics flow to otel-collector.o11y and land in
-# Prometheus with the k6_ prefix, split per arm by the `scenario` tag.
+# Per-run object, off by default — a run is an invocation, not standing
+# state. Start one with:
+#   bazel run //charts:soak.upgrade -- --set testRun.enabled=true
+# and remove it by flipping the flag back.
+{{- if .Values.testRun.enabled }}
 apiVersion: k6.io/v1alpha1
 kind: TestRun
 metadata:
   name: clj-grpc-soak
-  namespace: clj-grpc-soak
+  namespace: {{ .Values.namespace }}
 spec:
   parallelism: 1
   arguments: -o experimental-opentelemetry
@@ -17,25 +15,30 @@ spec:
     configMap:
       name: k6-soak-script
       file: soak.js
+  initializer:
+    nodeSelector:
+      kubernetes.io/hostname: {{ .Values.runner.nodeSelector }}
+  starter:
+    nodeSelector:
+      kubernetes.io/hostname: {{ .Values.runner.nodeSelector }}
   runner:
     image: grafana/k6:latest
-    # The client on its own worker, away from all three servers.
     nodeSelector:
-      kubernetes.io/hostname: main-worker-05
+      kubernetes.io/hostname: {{ .Values.runner.nodeSelector }}
     resources:
       requests:
         cpu: "2"
         memory: 1Gi
       limits:
-        cpu: "2"
+        cpu: "3"
         memory: 1Gi
     env:
       - name: RATE
-        value: "200"
+        value: {{ .Values.testRun.rate | quote }}
       - name: DURATION
-        value: 2h
+        value: {{ .Values.testRun.duration }}
       - name: K6_OTEL_GRPC_EXPORTER_ENDPOINT
-        value: otel-collector.o11y.svc.cluster.local:4317
+        value: {{ .Values.testRun.otelEndpoint }}
       - name: K6_OTEL_GRPC_EXPORTER_INSECURE
         value: "true"
       - name: K6_OTEL_EXPORTER_TYPE
@@ -46,3 +49,4 @@ spec:
         value: clj-grpc-soak
       - name: K6_OTEL_EXPORT_INTERVAL
         value: 5s
+{{- end }}
