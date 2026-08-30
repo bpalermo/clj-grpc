@@ -19,7 +19,16 @@
                             :handlers {:say-hello
                                        (fn [req]
                                          (g/HelloReply->proto
-                                          {:message (str "Hello " (:name (g/proto->HelloRequest req)))}))}}]}
+                                          {:message (str "Hello " (:name (g/proto->HelloRequest req)))}))
+                                       ;; Bidi echo for the streaming capacity
+                                       ;; arm: per-message cost with the
+                                       ;; per-call machinery amortized away.
+                                       :chat
+                                       (fn [send! close!]
+                                         {:on-next (fn [req]
+                                                     (send! (g/HelloReply->proto
+                                                             {:message (:name (g/proto->HelloRequest req))})))
+                                          :on-complete close!})}}]}
          (System/getenv "UDS") (assoc :address {:unix (System/getenv "UDS")})
          (= "direct" (System/getenv "EXECUTOR")) (assoc :executor :direct)))
       server/start

@@ -65,6 +65,25 @@ Against Prometheus (`prometheus-server.prometheus.svc`):
   **CPU per request** per arm
 - pod restarts / OOMKills (pass: zero)
 
+## Streaming capacity (bidi echo)
+
+The unary ramps measure per-call cost; `clj-grpc.soak.stream-driver`
+measures per-MESSAGE cost over persistent bidi Chat streams — S streams, an
+absolute-schedule open-loop pacer (coordinated-omission-safe), bounded
+in-flight per stream (`deferred` counts are the knee signal), and
+client-side per-message latency from a send-timestamp FIFO (gRPC's
+per-stream ordering makes echo k answer send k). k6's stream API was
+evaluated and rejected as a high-rate driver (reflective JSON⇄proto per
+message, no backpressure, per-stream-only latency); the driver rides inside
+the soak-grpc-jvm image's jar, so no extra image exists:
+
+```sh
+# per run: set the arm's EXECUTOR env as desired, pin the Job image digest,
+kubectl --context talos-main apply -f soak/k8s/stream-capacity-job.yaml
+kubectl --context talos-main -n clj-grpc-soak logs -f job/stream-capacity
+kubectl --context talos-main -n clj-grpc-soak delete job stream-capacity
+```
+
 ## Results
 
 ### 2026-08-29/30 — executor grid + capacity campaign

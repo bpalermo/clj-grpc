@@ -68,12 +68,17 @@ clj_library(
     ],
 )
 
-# The subject: its _deploy.jar is what the arms launch.
+# The subject: its _deploy.jar is what the arms launch. stream_driver_lib
+# rides along so the same jar (and thus the soak-grpc-jvm image) can run the
+# streaming capacity driver via `clojure.main -m clj-grpc.soak.stream-driver`.
 clj_binary(
     name = "coldstart_server",
     main_class = "clj_grpc.coldstart.server",
     tags = ["manual"],
-    deps = [":coldstart_lib"],
+    deps = [
+        ":coldstart_lib",
+        ":stream_driver_lib",
+    ],
 )
 
 # The harness; run with arm segments, see measure.clj docstring.
@@ -119,6 +124,23 @@ clj_binary(
     main_class = "clj_grpc.soak.rest_server",
     tags = ["manual"],
     deps = [":soak_lib"],
+)
+
+# The bidi-echo capacity driver. Rides inside coldstart_server's deploy jar
+# (see that binary's deps) so the published soak-grpc-jvm image can run it
+# with a command override — no separate image.
+clj_library(
+    name = "stream_driver_lib",
+    srcs = ["clj_grpc/soak/stream_driver.clj"],
+    namespaces = ["clj-grpc.soak.stream-driver"],
+    strip_prefix = "bench",
+    deps = [
+        "//src:clj_grpc",
+        "//test:fixtures",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:org_clojure_clojure",
+    ],
 )
 
 # Steady state, same arms: what the ten-thousandth RPC costs once the JVM has
