@@ -87,4 +87,4 @@ kubectl --context talos-main -n clj-grpc-soak delete job stream-capacity
 ## Results
 
 Campaign results live in [`docs/soak-results.md`](../docs/soak-results.md);
-raw per-step tables in [`results/`](results/).
+raw per-step tables in [`docs/results/`](../docs/results/).

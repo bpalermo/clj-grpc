@@ -3,7 +3,7 @@
 On-cluster measurements of the three soak arms (gRPC native-image, gRPC JVM,
 REST/Pedestal — identical 1-CPU/1-Gi pods on talos-main, one arm per worker;
 harness and procedure in [`../soak/README.md`](../soak/README.md); raw
-per-step tables in [`../soak/results/`](../soak/results/)).
+per-step tables in [`results/`](results/)).
 
 ### 2026-08-29/30 — executor grid + capacity campaign
 
