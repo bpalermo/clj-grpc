@@ -194,7 +194,8 @@ through bytes-dominated; the README carries the table.
 
 Identical discipline to clj-protobuf: Bazel + rules_clj primary with the
 bazel 8/9 × plain-clj CI matrix under one aggregate check, `deps.edn` as the
-single dependency source, source-only Clojars jar via `build.clj`,
+single dependency source, source-only Clojars jar and upload via
+`//src:clojars` (rules_clj's `clj_maven_export`),
 version-consistency and formatting as ordinary tests, tag-gated `release`
 environment, and a release workflow that refuses tags not on main or
 disagreeing with `version.edn`.

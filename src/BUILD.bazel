@@ -1,4 +1,4 @@
-load("@rules_clj//clojure:defs.bzl", "clj_library")
+load("@rules_clj//clojure:defs.bzl", "clj_library", "clj_maven_export")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -50,4 +50,38 @@ clj_library(
         "@deps//:io_netty_netty_transport_native_unix_common",
         "@deps//:org_clojure_clojure",
     ],
+)
+
+# The Clojars artifact: the same sources the library ships, the native-image
+# contract that rides with them, and a pom derived from the deps.edn and
+# version.edn everything else here reads. What used to be build.clj, a :build
+# alias and tools.build.
+#
+#   bazel build //src:clojars                    the jar and the pom
+#   bazel run //src:clojars.publish -- --dry-run every PUT, nothing sent
+#   bazel run //src:clojars.publish              the upload
+#
+# `resources` carries META-INF/native-image, and it is not optional: native-image
+# discovers its configuration from any jar on the image classpath, so a published
+# jar without it builds an image whose every reflective call dies at run time —
+# silently, because that is how native-image fails.
+#
+# Here rather than in the root package because a glob cannot cross into a
+# subpackage, and these sources live in this one.
+clj_maven_export(
+    name = "clojars",
+    srcs = glob(["clj_grpc/**/*.clj"]),
+    artifact_id = "clj-grpc",
+    deps_edn = "//:deps.edn",
+    description = "gRPC for Clojure on non-shaded Netty, over clj-protobuf: dynamic services from generated code, Unix domain sockets, epoll, and Knative presets.",
+    group_id = "com.github.bpalermo",
+    license = (
+        "Apache-2.0",
+        "https://www.apache.org/licenses/LICENSE-2.0",
+    ),
+    resources = glob(["META-INF/**"]),
+    scm_url = "https://github.com/bpalermo/clj-grpc",
+    strip_prefix = "src",
+    url = "https://github.com/bpalermo/clj-grpc",
+    version_file = "//:version.edn",
 )

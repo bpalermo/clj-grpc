@@ -214,7 +214,8 @@ harness lives in [`soak/`](soak/), raw per-step tables in
 Bazel (with [rules_clj](https://github.com/bpalermo/rules_clj)):
 `bazel test //...` — the e2e suite runs every streaming shape over real Netty,
 TCP and UDS both. `clojure -X:test` runs the non-Bazel subset; the Clojars
-artifact is `clojure -T:build jar`.
+artifact is `bazel build //src:clojars`, and `bazel run //src:clojars.publish --
+--dry-run` prints every upload it would make.
 
 ## License
 

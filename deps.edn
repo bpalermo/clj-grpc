@@ -62,9 +62,6 @@
          :main-opts ["-m" "cognitect.test-runner"]
          :exec-fn cognitect.test-runner.api/test
          :exec-args {:patterns ["clj-grpc\\.(e2e|lazy-netty|netty-alignment)-test"]}}
-  :build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.5"}
-                 slipset/deps-deploy {:mvn/version "0.2.2"}}
-          :ns-default build}
   ;; bazel run //bench:run — gRPC round trips vs REST+JSON on Pedestal/Jetty.
   :bench {:extra-paths ["bench" "test/fixtures"]
           :extra-deps {criterium/criterium {:mvn/version "0.4.6"}
