@@ -15,6 +15,28 @@ to failureThreshold 60). Run 3's arm was liveness-killed at ~00:56Z. Run 5's
 1400-offered window shows a transient inversion (dropped-iterations spike
 that window) inconsistent with its neighbors.
 
+## Summary
+
+**Capacity ramps** (200→2400 req/s, 2-min steps, one arm at a time, same
+pods): max sustainable goodput per identical 1-CPU pod —
+
+| configuration | plateau | overload behavior |
+|---|---|---|
+| gRPC JVM `:direct` | ~2,140 req/s | graceful (h2 flow-control backpressure) |
+| gRPC JVM VT default | ~2,060 req/s | graceful, tails degrade |
+| gRPC native VT | ~1,550 req/s | liveness-starvation kills before probe tuning |
+| REST (Jetty, HTTP/1.1) | ~960 req/s | queue-death: p50 pins at 1.7 s, then collapse |
+
+At equal resources gRPC sustains **2.2× (JVM) / 1.6× (native)** REST's
+throughput. The executor trade **inverts with load**: VT protects tails ~2×
+at ~10% utilization; above ~75% utilization `:direct` wins goodput *and*
+tails (p99 382 vs 662 ms at 2000 req/s). Peak heaps under saturation:
+native 81 MB, gRPC-JVM 61 MB, REST 267 MB.
+
+A grpc-netty patch adding a server-side `WriteQueue.drainNow()` (upstream
+prototype) reproduced its JMH signature on-cluster: p99 −20–23% across
+1200–2200 req/s and **−64% at 2400** (1994→717 ms), goodput unchanged.
+
 ## Run 1 — grpc-native, VT executor (start 23:49:12Z)
 
 | offered | delivered | p50ms | p99ms | dropped/s |
