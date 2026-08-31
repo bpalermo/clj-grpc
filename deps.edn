@@ -22,7 +22,7 @@
 ;; wanted. Document-only add-on.
 {:paths ["src"]
  :deps {org.clojure/clojure {:mvn/version "1.12.5"}
-        com.github.bpalermo/clj-protobuf {:mvn/version "0.1.6"}
+        com.github.bpalermo/clj-protobuf {:mvn/version "0.1.10"}
 
         io.grpc/grpc-api {:mvn/version "1.83.1"}
         io.grpc/grpc-core {:mvn/version "1.83.1"}

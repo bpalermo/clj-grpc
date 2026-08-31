@@ -9,7 +9,7 @@ module(
 )
 
 # The ruleset, from the Bazel Central Registry.
-bazel_dep(name = "rules_clj", version = "0.2.0")
+bazel_dep(name = "rules_clj", version = "0.2.3")
 
 native_toolchains = use_extension(
     "@rules_clj//clojure:extensions.bzl",
