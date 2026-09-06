@@ -62,6 +62,16 @@ image_push(
 # gRPC JVM: the identical server as its deploy jar on the distroless JRE.
 # Heap capped well under the 1 Gi pod limit; G1 is the JVM default.
 
+# Pyroscope's Java agent, shared by both JVM images. Present in every build so
+# a profiled and an unprofiled run differ by one environment variable and
+# nothing in the image — PYROSCOPE_AGENT_ENABLED, set by the chart. The
+# native image cannot take a -javaagent and does not get this layer.
+image_layer(
+    name = "pyroscope_agent_layer",
+    srcs = {"/pyroscope.jar": "@pyroscope_agent//file"},
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
 image_layer(
     name = "grpc_jvm_layer",
     srcs = {"/app.jar": "//bench:coldstart_server_deploy.jar"},
@@ -75,10 +85,14 @@ image_manifest(
     entrypoint = [
         "/usr/bin/java",
         "-Xmx512m",
+        "-javaagent:/pyroscope.jar",
         "-jar",
         "/app.jar",
     ],
-    layers = [":grpc_jvm_layer"],
+    layers = [
+        ":pyroscope_agent_layer",
+        ":grpc_jvm_layer",
+    ],
     target_compatible_with = ["@platforms//os:linux"],
 )
 
@@ -113,10 +127,14 @@ image_manifest(
     entrypoint = [
         "/usr/bin/java",
         "-Xmx512m",
+        "-javaagent:/pyroscope.jar",
         "-jar",
         "/app.jar",
     ],
-    layers = [":rest_layer"],
+    layers = [
+        ":pyroscope_agent_layer",
+        ":rest_layer",
+    ],
     target_compatible_with = ["@platforms//os:linux"],
 )
 
