@@ -38,6 +38,10 @@ arms:
     probe: http
     nodeSelector: main-worker-04
     profile: true
+    # Shares worker-04 with rest-h1, and that node has room for one Guaranteed
+    # 1-CPU arm, not two. Only one REST arm is up at a time: this one starts
+    # scaled to zero and soak/ladder.sh flips the pair per run.
+    replicas: 0
     extraEnv:
       H2C: "on"
       # Jetty's default is 128 concurrent streams per connection, which an

@@ -21,8 +21,10 @@ the new numbers can be checked against the old) and `realistic` (a nested
 deployed for the density/cold-start story but is not a rung.
 
 All arms: identical 1-CPU/1 Gi Guaranteed pods, one arm per dedicated worker
-(the REST pair shares worker-04 and runs one at a time), the load generator on
-its own worker. Server images are built by `.github/workflows/build.yaml` on
+(the REST pair shares worker-04 and runs one at a time — `rest-h2c` deploys
+scaled to zero and `ladder.sh` flips the pair; the node has room for exactly
+one Guaranteed arm), the load generator on its own worker. Deployments use
+`Recreate`: a rolling surge pod cannot fit beside the old one on a pinned node. Server images are built by `.github/workflows/build.yaml` on
 arm64 runners and pushed only when their manifest digest changes.
 
 ## One instrument: Nighthawk

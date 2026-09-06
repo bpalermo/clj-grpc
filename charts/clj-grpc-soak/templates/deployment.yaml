@@ -12,7 +12,16 @@ metadata:
     app: {{ $name }}
     app.kubernetes.io/part-of: clj-grpc-soak
 spec:
-  replicas: 1
+  {{- /* Not `default 1`: Helm's default treats 0 as empty, and 0 is the point. */}}
+  replicas: {{ if hasKey $arm "replicas" }}{{ $arm.replicas }}{{ else }}1{{ end }}
+  # Recreate, not RollingUpdate: every arm is pinned to one node by selector,
+  # and that node has room for exactly one Guaranteed 1-CPU arm. A rolling
+  # upgrade's surge pod needs a second such core on the same node, finds
+  # none, and the rollout deadlocks Pending — which is how chart 0.2.2's
+  # upgrade failed. Old pod out, then the new one in; a run restarts the arm
+  # anyway, so the gap costs nothing the campaign measures.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: {{ $name }}
