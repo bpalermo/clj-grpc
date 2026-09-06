@@ -25,6 +25,10 @@ spec:
         app.kubernetes.io/part-of: clj-grpc-soak
     spec:
       restartPolicy: Never
+      # The driver never talks to the API server, and the token mount was the
+      # thing that could not be created when the script ConfigMap shadowed
+      # /run (which is /var/run on the image).
+      automountServiceAccountToken: false
       nodeSelector:
         kubernetes.io/hostname: {{ .Values.runner.nodeSelector }}
       securityContext:
@@ -36,8 +40,10 @@ spec:
         - name: nighthawk
           image: {{ $lj.image | quote }}
           # The image's entrypoint is nighthawk_client; the loop needs a shell
-          # around it, which is the one reason this overrides command.
-          command: ["/bin/sh", "/run/run.sh"]
+          # around it, which is the one reason this overrides command. The
+          # script is mounted at /nh, NOT /run: /run is /var/run on the image,
+          # and a ConfigMap there hides the kubelet's own mount points.
+          command: ["/bin/sh", "/nh/run.sh"]
           env:
             - name: TARGET
               value: {{ printf "%s.%s.svc.cluster.local" $lj.target .Values.namespace | quote }}
@@ -82,7 +88,7 @@ spec:
               mountPath: /bodies
               readOnly: true
             - name: run
-              mountPath: /run
+              mountPath: /nh
               readOnly: true
             - name: tmp
               mountPath: /tmp
