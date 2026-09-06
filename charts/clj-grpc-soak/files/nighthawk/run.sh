@@ -32,14 +32,34 @@ snapshot() {
   curl -sf --max-time 5 "${METRICS_URL}" 2>/dev/null | base64 | tr -d '\n' || true
 }
 
+# Nighthawk's --rps, --connections and --max-active-requests are PER WORKER
+# (its log says so: "Global targets: 800 calls per second (Per-worker
+# targets: 400)"), and --concurrency is the worker count. Every rate and
+# budget in this file is the AGGREGATE the values.yaml states; this is where
+# it is divided. The one exception is --grpc-stream, whose --rps the fork
+# defines as aggregate — streams are divided across workers there instead.
+per_worker() { echo $(( $1 / CONCURRENCY )); }
+
 # Flags common to every mode. Open loop, no client-side queueing, and no
 # default failure predicates: the ramp is MEANT to exceed capacity, and the
 # counters (pool_overflow, grpc_error, stream_deferred) are how saturation is
 # read, not a reason to stop.
 common() {
-  echo "--open-loop --rps $1 --duration $2 --concurrency ${CONCURRENCY}" \
+  echo "--open-loop --rps $(per_worker "$1") --duration $2 --concurrency ${CONCURRENCY}" \
        "--max-pending-requests 0 --no-default-failure-predicates" \
-       "--sequencer-idle-strategy spin --output-format json"
+       "--sequencer-idle-strategy ${IDLE_STRATEGY:-spin} --output-format json"
+}
+
+# The REST body. --request-body-file arrives with the fork's P1; until then
+# the same bytes go through Nighthawk's in-line request-source plugin, which
+# also sets content-type: application/json. Both paths send the file verbatim.
+rest_body() {
+  if [ "${BODY_VIA_FILE:-no}" = "yes" ]; then
+    echo "--request-header 'content-type: application/json' --request-body-file /bodies/${TIER}.json"
+  else
+    body="$(sed 's/\\/\\\\/g; s/"/\\"/g' "/bodies/${TIER}.json" | tr -d '\n')"
+    echo "--request-source-plugin-config '{name: \"nighthawk.in-line-options-list-request-source-plugin\", typed_config: {\"@type\": \"type.googleapis.com/nighthawk.request_source.InLineOptionsListRequestSourceConfig\", options_list: {options: [{request_method: \"POST\", json_body: \"${body}\"}]}}}'"
+  fi
 }
 
 # Per-mode flags and URI. Bodies are the chart's generated files: JSON for
@@ -48,20 +68,19 @@ common() {
 mode_args() {
   case "${MODE}" in
     http1)
-      echo "--protocol http1 --connections ${HTTP1_CONNECTIONS} --prefetch-connections" \
-           "--request-method POST --request-header 'content-type: application/json'" \
-           "--request-body-file /bodies/${TIER}.json ${BASE}/hello" ;;
+      echo "--protocol http1 --connections $(per_worker "${HTTP1_CONNECTIONS}") --prefetch-connections" \
+           "--request-method POST $(rest_body) ${BASE}/hello" ;;
     http2)
-      echo "--protocol http2 --connections ${HTTP2_CONNECTIONS}" \
-           "--max-active-requests ${MAX_ACTIVE_REQUESTS} --max-concurrent-streams ${MAX_CONCURRENT_STREAMS}" \
-           "--request-method POST --request-header 'content-type: application/json'" \
-           "--request-body-file /bodies/${TIER}.json ${BASE}/hello" ;;
+      echo "--protocol http2 --connections $(per_worker "${HTTP2_CONNECTIONS}")" \
+           "--max-active-requests $(per_worker "${MAX_ACTIVE_REQUESTS}") --max-concurrent-streams ${MAX_CONCURRENT_STREAMS}" \
+           "--request-method POST $(rest_body) ${BASE}/hello" ;;
     grpc-unary)
-      echo "--grpc --connections ${HTTP2_CONNECTIONS}" \
-           "--max-active-requests ${MAX_ACTIVE_REQUESTS} --max-concurrent-streams ${MAX_CONCURRENT_STREAMS}" \
+      echo "--grpc --connections $(per_worker "${HTTP2_CONNECTIONS}")" \
+           "--max-active-requests $(per_worker "${MAX_ACTIVE_REQUESTS}") --max-concurrent-streams ${MAX_CONCURRENT_STREAMS}" \
            "--request-body-file /bodies/${TIER}.pb ${BASE}/acme.greeter.Greeter/SayHello" ;;
     grpc-stream)
-      echo "--grpc-stream --streams ${STREAMS} --max-inflight-per-stream ${INFLIGHT}" \
+      # Aggregate --rps in this mode (fork semantics); undo common()'s division.
+      echo "--rps ${rps} --grpc-stream --streams ${STREAMS} --max-inflight-per-stream ${INFLIGHT}" \
            "--stream-drain-duration ${STREAM_DRAIN}" \
            "--request-body-file /bodies/${TIER}.pb ${BASE}/acme.greeter.Greeter/Chat" ;;
     *)

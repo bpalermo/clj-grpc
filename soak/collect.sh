@@ -79,6 +79,9 @@ while IFS= read -r line; do
             rps, tag, f(delivered,1), f(p50,2), f(p99,2), f(p999,2), f(kneeps,1), f(cpu_ms,3), f(thr_s,1), f(heap_mb,0), f(rss_mb,0)
         }')
       echo "${row}" ;;
+    # kubectl logs interleaves stderr with stdout: Nighthawk's Envoy log lines
+    # start with "[", run.sh's with "run.sh:". Neither is part of the JSON.
+    "["*|"run.sh:"*) ;;
     *) [ "${in_step}" = 1 ] && body="${body}${line}"$'\n' ;;
   esac
 done
