@@ -18,16 +18,24 @@
        (cond-> {:services [{:service g/Greeter
                             :handlers {:say-hello
                                        (fn [req]
-                                         (g/HelloReply->proto
-                                          {:message (str "Hello " (:name (g/proto->HelloRequest req)))}))
+                                         (let [{:keys [name payload]} (g/proto->HelloRequest req)]
+                                           ;; The realistic tier's nested payload is
+                                           ;; echoed back, so both protocols pay the same
+                                           ;; decode+encode per request; the tiny tier
+                                           ;; has none and the reply carries none.
+                                           (g/HelloReply->proto
+                                            (cond-> {:message (str "Hello " name)}
+                                              (some? payload) (assoc :payload payload)))))
                                        ;; Bidi echo for the streaming capacity
                                        ;; arm: per-message cost with the
                                        ;; per-call machinery amortized away.
                                        :chat
                                        (fn [send! close!]
                                          {:on-next (fn [req]
-                                                     (send! (g/HelloReply->proto
-                                                             {:message (:name (g/proto->HelloRequest req))})))
+                                                     (let [{:keys [name payload]} (g/proto->HelloRequest req)]
+                                                       (send! (g/HelloReply->proto
+                                                               (cond-> {:message name}
+                                                                 (some? payload) (assoc :payload payload))))))
                                           :on-complete close!})}}]}
          (System/getenv "UDS") (assoc :address {:unix (System/getenv "UDS")})
          (= "direct" (System/getenv "EXECUTOR")) (assoc :executor :direct)))

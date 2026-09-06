@@ -126,6 +126,51 @@ clj_binary(
     deps = [":soak_lib"],
 )
 
+# The switch ladder's request bodies. A build action rather than a checked-in
+# fixture: the realistic tier is SIZED by encoding it, so the bytes follow the
+# proto and the target rather than a copy someone has to remember to refresh.
+# //charts:bodies runs this into the chart's files/.
+clj_library(
+    name = "soak_payload_lib",
+    srcs = ["clj_grpc/soak/payload.clj"],
+    namespaces = ["clj-grpc.soak.payload"],
+    strip_prefix = "bench",
+    deps = [
+        "//test:fixtures",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:metosin_jsonista",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+clj_binary(
+    name = "payload_bodies",
+    main_class = "clj_grpc.soak.payload",
+    deps = [":soak_payload_lib"],
+)
+
+clj_library(
+    name = "payload_test_lib",
+    testonly = True,
+    srcs = ["clj_grpc/soak/payload_test.clj"],
+    namespaces = ["clj-grpc.soak.payload-test"],
+    strip_prefix = "bench",
+    deps = [
+        ":soak_payload_lib",
+        "//test:fixtures",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:metosin_jsonista",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+clj_test(
+    name = "payload_test",
+    ns = "clj-grpc.soak.payload-test",
+    deps = [":payload_test_lib"],
+)
+
 # The bidi-echo capacity driver. Rides inside coldstart_server's deploy jar
 # (see that binary's deps) so the published soak-grpc-jvm image can run it
 # with a command override — no separate image.
@@ -163,6 +208,11 @@ clj_native_binary(
         # image links zlib dynamically by default — found the hard way as a
         # CrashLoop (exit 127) on the cluster.
         "-H:+StaticExecutableWithDynamicLibC",
+        # Keep the symbol table and frame pointers: the cluster's eBPF profiler
+        # can unwind this binary either way, but without these every frame is
+        # a hex offset. The cost is binary size, not speed.
+        "-H:+PreserveFramePointer",
+        "-H:-DeleteLocalSymbols",
     ],
     jar = ":coldstart_server_deploy.jar",
     tags = ["manual"],
