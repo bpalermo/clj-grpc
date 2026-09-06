@@ -88,11 +88,11 @@ spec:
               mountPath: /tmp
           resources:
             requests:
-              cpu: "2"
-              memory: 1Gi
+              cpu: {{ $lj.resources.cpu | quote }}
+              memory: {{ $lj.resources.memory }}
             limits:
-              cpu: "2"
-              memory: 1Gi
+              cpu: {{ $lj.resources.cpu | quote }}
+              memory: {{ $lj.resources.memory }}
       volumes:
         - name: bodies
           configMap:

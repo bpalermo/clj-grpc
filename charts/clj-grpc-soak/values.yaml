@@ -92,13 +92,23 @@ loadJob:
   warmup:
     rps: "200"
     seconds: "120"
-  # Nighthawk event loops; the runner has two CPUs. --streams must divide by it.
-  # Every rate and connection budget below is AGGREGATE; run.sh divides by
-  # this, because Nighthawk's own flags are per worker.
-  concurrency: "2"
+  # The driver's budget, Guaranteed (requests == limits). One dedicated core
+  # and ONE worker: the runner node (main-worker-05) now also hosts
+  # pyroscope-0 and ~2 CPUs of other requests, so two Guaranteed cores no
+  # longer fit — and one Nighthawk event loop spinning on its own core is what
+  # the project's own precision guidance prefers over two contending ones. A
+  # single worker sustains every rate on this ladder with room to spare.
+  resources:
+    cpu: "1"
+    memory: 1Gi
+  # Nighthawk event loops. --streams must divide by it. Every rate and
+  # connection budget below is AGGREGATE; run.sh divides by this, because
+  # Nighthawk's own flags are per worker. Raise it together with
+  # resources.cpu — never above the cores the Job is Guaranteed.
+  concurrency: "1"
   # spin gives the most precise send times but burns a full core per worker;
   # on a throttled driver it distorts timings — use sleep if the Job cannot
-  # get its two CPUs Guaranteed.
+  # get resources.cpu Guaranteed.
   idleStrategy: spin
   # Until the fork's P1 ships --request-body-file, REST bodies travel through
   # the in-line request-source plugin. Flip to "yes" once pinned to a P1 sha.
