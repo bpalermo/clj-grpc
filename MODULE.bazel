@@ -46,6 +46,20 @@ bazel_dep(name = "rules_shell", version = "0.8.0", dev_dependency = True)
 # protoc-gen-clojure's bazel/dev image.
 bazel_dep(name = "rules_img", version = "0.3.19", dev_dependency = True)
 
+# Pyroscope's Java agent, layered into the two JVM soak images and enabled per
+# run by the chart (PYROSCOPE_AGENT_ENABLED). A plain file rather than a Maven
+# coordinate: it is not on any classpath, it is a -javaagent, and the lockfile
+# has no business carrying it. Version pinned with the artifact's digest.
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+
+http_file(
+    name = "pyroscope_agent",
+    dev_dependency = True,
+    downloaded_file_path = "pyroscope.jar",
+    sha256 = "4b9aa1ba327a9ce2b1ce062578ad6b876c0d2496f15a00f0fdc4c953638cb76d",
+    urls = ["https://repo1.maven.org/maven2/io/pyroscope/agent/2.9.1/agent-2.9.1.jar"],
+)
+
 pull = use_repo_rule("@rules_img//img:pull.bzl", "pull")
 
 # Bases pinned by index digest because tags are mutable; the tag only records
