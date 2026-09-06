@@ -33,3 +33,13 @@ message dispatch is the one cost streaming cannot amortize on the VT
 executor. The full doctrine across every measured regime: **VT wins only
 low-utilization unary tails; `:direct` wins high-load unary, all streaming,
 capacity, and CPU — provided handlers never block.**
+
+## [Switch ladder](results/2026-09-switch-ladder-raw.md) — September 2026, in progress
+
+**Question:** what does an existing REST service gain from each switch it
+could make — transport (HTTP/1.1 → h2c), protocol (REST/JSON → gRPC unary),
+interaction model (unary → stream) — with every adjacent pair of arms
+differing in exactly one thing, on one instrument (Nighthawk), at two payload
+sizes, with CPU attribution from the arms' own cgroup counters and Pyroscope.
+**Conclusion:** _pending; phases land as the Nighthawk fork ships arm64, gRPC
+unary and per-message streaming._
