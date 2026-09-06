@@ -9,7 +9,7 @@
             [clj-grpc.service :as rts]))
 
 (def ^:private descriptor-b64
-  "ChphY21lL2dyZWV0ZXIvZ3JlZXRlci5wcm90bxIMYWNtZS5ncmVldGVyInkKDEhlbGxvUmVxdWVzdBISCgRuYW1lGAEgASgJUgRuYW1lEiEKDHJlcGVhdF9jb3VudBgCIAEoBVILcmVwZWF0Q291bnQSMgoIZ3JlZXRpbmcYAyABKA4yFi5hY21lLmdyZWV0ZXIuR3JlZXRpbmdSCGdyZWV0aW5nIiYKCkhlbGxvUmVwbHkSGAoHbWVzc2FnZRgBIAEoCVIHbWVzc2FnZSpMCghHcmVldGluZxIYChRHUkVFVElOR19VTlNQRUNJRklFRBAAEhIKDkdSRUVUSU5HX0hFTExPEAESEgoOR1JFRVRJTkdfSE9XRFkQAjKeAgoHR3JlZXRlchJACghTYXlIZWxsbxIaLmFjbWUuZ3JlZXRlci5IZWxsb1JlcXVlc3QaGC5hY21lLmdyZWV0ZXIuSGVsbG9SZXBseRJGCgxTYXlIZWxsb01hbnkSGi5hY21lLmdyZWV0ZXIuSGVsbG9SZXF1ZXN0GhguYWNtZS5ncmVldGVyLkhlbGxvUmVwbHkwARJHCg1Db2xsZWN0SGVsbG9zEhouYWNtZS5ncmVldGVyLkhlbGxvUmVxdWVzdBoYLmFjbWUuZ3JlZXRlci5IZWxsb1JlcGx5KAESQAoEQ2hhdBIaLmFjbWUuZ3JlZXRlci5IZWxsb1JlcXVlc3QaGC5hY21lLmdyZWV0ZXIuSGVsbG9SZXBseSgBMAFCEgoQY29tLmFjbWUuZ3JlZXRlcmIIZWRpdGlvbnNw6Qc=")
+  "ChphY21lL2dyZWV0ZXIvZ3JlZXRlci5wcm90bxIMYWNtZS5ncmVldGVyIkAKBEl0ZW0SEAoDc2t1GAEgASgJUgNza3USEAoDcXR5GAIgASgFUgNxdHkSFAoFcHJpY2UYAyABKAFSBXByaWNlIqIBCgdQYXlsb2FkEg4KAmlkGAEgASgJUgJpZBIUCgV0aXRsZRgCIAEoCVIFdGl0bGUSEgoEYm9keRgDIAEoCVIEYm9keRIdCgpjcmVhdGVkX2F0GAQgASgDUgljcmVhdGVkQXQSFAoFc2NvcmUYBSABKAFSBXNjb3JlEigKBWl0ZW1zGAYgAygLMhIuYWNtZS5ncmVldGVyLkl0ZW1SBWl0ZW1zIqoBCgxIZWxsb1JlcXVlc3QSEgoEbmFtZRgBIAEoCVIEbmFtZRIhCgxyZXBlYXRfY291bnQYAiABKAVSC3JlcGVhdENvdW50EjIKCGdyZWV0aW5nGAMgASgOMhYuYWNtZS5ncmVldGVyLkdyZWV0aW5nUghncmVldGluZxIvCgdwYXlsb2FkGAQgASgLMhUuYWNtZS5ncmVldGVyLlBheWxvYWRSB3BheWxvYWQiVwoKSGVsbG9SZXBseRIYCgdtZXNzYWdlGAEgASgJUgdtZXNzYWdlEi8KB3BheWxvYWQYAiABKAsyFS5hY21lLmdyZWV0ZXIuUGF5bG9hZFIHcGF5bG9hZCpMCghHcmVldGluZxIYChRHUkVFVElOR19VTlNQRUNJRklFRBAAEhIKDkdSRUVUSU5HX0hFTExPEAESEgoOR1JFRVRJTkdfSE9XRFkQAjKeAgoHR3JlZXRlchJACghTYXlIZWxsbxIaLmFjbWUuZ3JlZXRlci5IZWxsb1JlcXVlc3QaGC5hY21lLmdyZWV0ZXIuSGVsbG9SZXBseRJGCgxTYXlIZWxsb01hbnkSGi5hY21lLmdyZWV0ZXIuSGVsbG9SZXF1ZXN0GhguYWNtZS5ncmVldGVyLkhlbGxvUmVwbHkwARJHCg1Db2xsZWN0SGVsbG9zEhouYWNtZS5ncmVldGVyLkhlbGxvUmVxdWVzdBoYLmFjbWUuZ3JlZXRlci5IZWxsb1JlcGx5KAESQAoEQ2hhdBIaLmFjbWUuZ3JlZXRlci5IZWxsb1JlcXVlc3QaGC5hY21lLmdyZWV0ZXIuSGVsbG9SZXBseSgBMAFCEgoQY29tLmFjbWUuZ3JlZXRlcmIIZWRpdGlvbnNw6Qc=")
 
 (def file-descriptor
   (rt/file-descriptor descriptor-b64
@@ -24,11 +24,71 @@
 ;; absent, which is how a record (all keys always present) maps onto
 ;; protobuf explicit presence.
 
-(defrecord HelloRequest [name repeat-count greeting])
+(defrecord Item [sku qty price])
+(def Item-prototype (rt/message file-descriptor "Item" "com.acme.greeter.Item"))
+(def ^:private Item--sku (rt/field Item-prototype "sku"))
+(def ^:private Item--qty (rt/field Item-prototype "qty"))
+(def ^:private Item--price (rt/field Item-prototype "price"))
+(defn Item->proto
+  "Clojure -> protobuf. Takes the Item record or any map
+  with the same keys — records and plain maps are interchangeable."
+  ([m] (Item->proto m nil))
+  ([m opts]
+   (let [b (.newBuilderForType ^com.google.protobuf.Message Item-prototype)]
+     (codec/set-field! b Item--sku (:sku m) opts)
+     (codec/set-field! b Item--qty (:qty m) opts)
+     (codec/set-field! b Item--price (:price m) opts)
+     (.build b))))
+(defn proto->Item
+  "protobuf -> a Item record. Absent fields are nil."
+  ([msg] (proto->Item msg nil))
+  ([^com.google.protobuf.Message msg opts]
+   (->Item
+    (codec/get-field msg Item--sku opts)
+    (codec/get-field msg Item--qty opts)
+    (codec/get-field msg Item--price opts)
+    )))
+
+(defrecord Payload [id title body created-at score items])
+(def Payload-prototype (rt/message file-descriptor "Payload" "com.acme.greeter.Payload"))
+(def ^:private Payload--id (rt/field Payload-prototype "id"))
+(def ^:private Payload--title (rt/field Payload-prototype "title"))
+(def ^:private Payload--body (rt/field Payload-prototype "body"))
+(def ^:private Payload--created-at (rt/field Payload-prototype "created_at"))
+(def ^:private Payload--score (rt/field Payload-prototype "score"))
+(def ^:private Payload--items (rt/field Payload-prototype "items"))
+(defn Payload->proto
+  "Clojure -> protobuf. Takes the Payload record or any map
+  with the same keys — records and plain maps are interchangeable."
+  ([m] (Payload->proto m nil))
+  ([m opts]
+   (let [b (.newBuilderForType ^com.google.protobuf.Message Payload-prototype)]
+     (codec/set-field! b Payload--id (:id m) opts)
+     (codec/set-field! b Payload--title (:title m) opts)
+     (codec/set-field! b Payload--body (:body m) opts)
+     (codec/set-field! b Payload--created-at (:created-at m) opts)
+     (codec/set-field! b Payload--score (:score m) opts)
+     (codec/set-field! b Payload--items (:items m) opts)
+     (.build b))))
+(defn proto->Payload
+  "protobuf -> a Payload record. Absent fields are nil."
+  ([msg] (proto->Payload msg nil))
+  ([^com.google.protobuf.Message msg opts]
+   (->Payload
+    (codec/get-field msg Payload--id opts)
+    (codec/get-field msg Payload--title opts)
+    (codec/get-field msg Payload--body opts)
+    (codec/get-field msg Payload--created-at opts)
+    (codec/get-field msg Payload--score opts)
+    (codec/get-field msg Payload--items opts)
+    )))
+
+(defrecord HelloRequest [name repeat-count greeting payload])
 (def HelloRequest-prototype (rt/message file-descriptor "HelloRequest" "com.acme.greeter.HelloRequest"))
 (def ^:private HelloRequest--name (rt/field HelloRequest-prototype "name"))
 (def ^:private HelloRequest--repeat-count (rt/field HelloRequest-prototype "repeat_count"))
 (def ^:private HelloRequest--greeting (rt/field HelloRequest-prototype "greeting"))
+(def ^:private HelloRequest--payload (rt/field HelloRequest-prototype "payload"))
 (defn HelloRequest->proto
   "Clojure -> protobuf. Takes the HelloRequest record or any map
   with the same keys — records and plain maps are interchangeable."
@@ -38,6 +98,7 @@
      (codec/set-field! b HelloRequest--name (:name m) opts)
      (codec/set-field! b HelloRequest--repeat-count (:repeat-count m) opts)
      (codec/set-field! b HelloRequest--greeting (:greeting m) opts)
+     (codec/set-field! b HelloRequest--payload (:payload m) opts)
      (.build b))))
 (defn proto->HelloRequest
   "protobuf -> a HelloRequest record. Absent fields are nil."
@@ -47,11 +108,13 @@
     (codec/get-field msg HelloRequest--name opts)
     (codec/get-field msg HelloRequest--repeat-count opts)
     (codec/get-field msg HelloRequest--greeting opts)
+    (codec/get-field msg HelloRequest--payload opts)
     )))
 
-(defrecord HelloReply [message])
+(defrecord HelloReply [message payload])
 (def HelloReply-prototype (rt/message file-descriptor "HelloReply" "com.acme.greeter.HelloReply"))
 (def ^:private HelloReply--message (rt/field HelloReply-prototype "message"))
+(def ^:private HelloReply--payload (rt/field HelloReply-prototype "payload"))
 (defn HelloReply->proto
   "Clojure -> protobuf. Takes the HelloReply record or any map
   with the same keys — records and plain maps are interchangeable."
@@ -59,6 +122,7 @@
   ([m opts]
    (let [b (.newBuilderForType ^com.google.protobuf.Message HelloReply-prototype)]
      (codec/set-field! b HelloReply--message (:message m) opts)
+     (codec/set-field! b HelloReply--payload (:payload m) opts)
      (.build b))))
 (defn proto->HelloReply
   "protobuf -> a HelloReply record. Absent fields are nil."
@@ -66,6 +130,7 @@
   ([^com.google.protobuf.Message msg opts]
    (->HelloReply
     (codec/get-field msg HelloReply--message opts)
+    (codec/get-field msg HelloReply--payload opts)
     )))
 
 ;; services — pass the service value to your server, the methods to a client

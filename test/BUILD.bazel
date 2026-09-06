@@ -2,7 +2,7 @@ load("@rules_clj//clojure:defs.bzl", "clj_library", "clj_test")
 
 package(default_visibility = ["//visibility:public"])
 
-# The generated greeter fixture: real protoc-gen-clojure 0.4.0 output (the
+# The generated greeter fixture: real protoc-gen-clojure 0.5.0 output (the
 # clj-protobuf.* / clj-grpc.service namespace defaults).
 clj_library(
     name = "fixtures",

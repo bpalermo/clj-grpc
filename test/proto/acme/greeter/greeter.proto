@@ -18,14 +18,36 @@ enum Greeting {
   GREETING_HOWDY = 2;
 }
 
+// The switch ladder's "realistic" payload tier: a nested structure with
+// strings, numbers and a repeated field, sized to roughly a kilobyte on the
+// wire. The tiny tier leaves it absent, so its bytes are unchanged from the
+// August campaign. Echoed back in the reply so both REST and gRPC pay the same
+// decode+encode per request.
+message Item {
+  string sku = 1;
+  int32 qty = 2;
+  double price = 3;
+}
+
+message Payload {
+  string id = 1;
+  string title = 2;
+  string body = 3;
+  int64 created_at = 4;
+  double score = 5;
+  repeated Item items = 6;
+}
+
 message HelloRequest {
   string name = 1;
   int32 repeat_count = 2;
   Greeting greeting = 3;
+  Payload payload = 4;
 }
 
 message HelloReply {
   string message = 1;
+  Payload payload = 2;
 }
 
 service Greeter {

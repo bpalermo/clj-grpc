@@ -11,10 +11,36 @@ package(default_visibility = ["//visibility:private"])
 # `bazel run :soak.install` pushes the three images and then installs the
 # chart pinned to those digests; `:soak.push` additionally publishes the
 # chart itself to ghcr as an OCI artifact (charts/ prefix, per convention).
+# The load generator's request bodies, generated into the chart's files/ so
+# the arms are fed exactly what the proto in this tree says — and so the
+# realistic tier's size follows the proto rather than a copy someone has to
+# remember to refresh. Here rather than in //bench because rules_helm places
+# `files` by their path relative to THIS package.
+BODY_TIERS = [
+    "tiny",
+    "realistic",
+]
+
+BODY_TARGET_PB_BYTES = "1024"
+
+genrule(
+    name = "bodies",
+    outs = ["clj-grpc-soak/files/bodies/SIZES.txt"] + [
+        "clj-grpc-soak/files/bodies/{}.{}".format(tier, ext)
+        for tier in BODY_TIERS
+        for ext in [
+            "json",
+            "pb",
+        ]
+    ],
+    cmd = "$(location //bench:payload_bodies) $(RULEDIR)/clj-grpc-soak/files/bodies " + BODY_TARGET_PB_BYTES + " > /dev/null",
+    tools = ["//bench:payload_bodies"],
+)
+
 helm_chart(
     name = "soak",
     chart = "clj-grpc-soak/Chart.yaml",
-    files = glob(["clj-grpc-soak/files/**"]),
+    files = glob(["clj-grpc-soak/files/**"]) + [":bodies"],
     images = [
         "//bazel/images:grpc_jvm_push",
         "//bazel/images:grpc_native_push",
