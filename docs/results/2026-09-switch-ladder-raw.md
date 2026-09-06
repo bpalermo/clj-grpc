@@ -8,7 +8,9 @@ are appended per phase as the Nighthawk fork ships each capability.
 
 talos-main (arm64, 5 × 4-core workers). Identical 1-CPU/1-Gi Guaranteed pods:
 `rest-h1` and `rest-h2c` on worker-04 (same image, one up at a time),
-`grpc-jvm` (`EXECUTOR=direct`) on worker-03, the Nighthawk Job on worker-05.
+`grpc-jvm` (`EXECUTOR=direct`) on worker-03, the Nighthawk Job on worker-05 as a
+1-CPU Guaranteed pod running ONE spinning worker (worker-05 also hosts `pyroscope-0`;
+two Guaranteed cores no longer fit there).
 Open loop, one `nighthawk_client` per 110 s step, tagged 120 s warmup step
 first. CPU per request from the arm's cgroup `cpu.stat` delta over the step's
 delivered count (cAdvisor is not scraped on this cluster).
