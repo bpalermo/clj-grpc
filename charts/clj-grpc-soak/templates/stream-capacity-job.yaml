@@ -1,12 +1,13 @@
-# The bidi-streaming capacity driver (clj-grpc.soak.stream-driver rides in
-# the grpc-jvm image's jar). Per-run, off by default:
-#   bazel run //charts:soak.upgrade -- --set streamJob.enabled=true,streamJob.target=grpc-jvm
+# The Clojure bidi-streaming driver (clj-grpc.soak.stream-driver rides in the
+# grpc-jvm image's jar), kept as a CROSS-CHECK for the Nighthawk grpc-stream
+# arm — not the primary instrument. Per-run, off by default:
+#   bazel run //charts:soak.upgrade -- --set streamCheck.enabled=true,streamCheck.target=grpc-jvm
 # Results are the Job's logs.
-{{- if .Values.streamJob.enabled }}
+{{- if .Values.streamCheck.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: stream-capacity
+  name: stream-check
   namespace: {{ .Values.namespace }}
 spec:
   backoffLimit: 0
@@ -31,15 +32,15 @@ spec:
           command: ["/usr/bin/java", "-Xmx768m", "-cp", "/app.jar", "clojure.main", "-m", "clj-grpc.soak.stream-driver"]
           env:
             - name: TARGET_ADDR
-              value: "{{ .Values.streamJob.target }}.{{ .Values.namespace }}.svc.cluster.local:8080"
+              value: "{{ .Values.streamCheck.target }}.{{ .Values.namespace }}.svc.cluster.local:8080"
             - name: STREAMS
-              value: {{ .Values.streamJob.streams | quote }}
+              value: {{ .Values.streamCheck.streams | quote }}
             - name: RAMP
-              value: {{ .Values.streamJob.ramp | quote }}
+              value: {{ .Values.streamCheck.ramp | quote }}
             - name: STEP_SECONDS
-              value: {{ .Values.streamJob.stepSeconds | quote }}
+              value: {{ .Values.streamCheck.stepSeconds | quote }}
             - name: INFLIGHT
-              value: {{ .Values.streamJob.inflight | quote }}
+              value: {{ .Values.streamCheck.inflight | quote }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

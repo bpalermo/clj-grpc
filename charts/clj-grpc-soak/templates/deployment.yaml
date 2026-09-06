@@ -39,6 +39,32 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
+            {{- if $arm.profile }}
+            {{- if $.Values.profiling.enabled }}
+            # Pyroscope's Java agent (in the JVM images' entrypoint). The
+            # application name is suffixed so these series never merge with
+            # the eBPF profiler's, which labels the pod by Deployment name.
+            - name: PYROSCOPE_AGENT_ENABLED
+              value: "true"
+            - name: PYROSCOPE_SERVER_ADDRESS
+              value: {{ $.Values.profiling.serverAddress | quote }}
+            - name: PYROSCOPE_APPLICATION_NAME
+              value: {{ printf "%s-java" $name | quote }}
+            - name: PYROSCOPE_PROFILER_EVENT
+              value: {{ $.Values.profiling.event | quote }}
+            - name: PYROSCOPE_PROFILING_INTERVAL
+              value: {{ $.Values.profiling.interval | quote }}
+            - name: PYROSCOPE_UPLOAD_INTERVAL
+              value: {{ $.Values.profiling.uploadInterval | quote }}
+            - name: PYROSCOPE_LABELS
+              value: {{ printf "arm=%s,namespace=%s,campaign=switch_ladder" $name $.Values.namespace | quote }}
+            - name: PYROSCOPE_LOG_LEVEL
+              value: "warn"
+            {{- else }}
+            - name: PYROSCOPE_AGENT_ENABLED
+              value: "false"
+            {{- end }}
+            {{- end }}
           ports:
             - name: {{ if eq $arm.probe "grpc" }}h2c{{ else }}http{{ end }}
               containerPort: 8080

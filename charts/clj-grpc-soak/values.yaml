@@ -4,21 +4,47 @@
 # nothing is read from any registry, and there is no pin script to run.
 namespace: clj-grpc-soak
 
+# The switch ladder: each adjacent pair of arms changes exactly one thing —
+#   rest-h1  → rest-h2c   transport        (same image, same node; only $H2C differs)
+#   rest-h2c → grpc-jvm   protocol         (JSON/Jetty → protobuf/Netty)
+#   grpc-jvm unary → grpc-jvm stream       interaction model (same arm, different Job mode)
+# grpc-native stays deployed for the density/cold-start story but is not a
+# rung of the ladder. `profile: true` marks the arms the Pyroscope Java agent
+# may attach to when profiling.enabled is set; the native image has no JVM.
 arms:
   grpc-native:
     image: "{@//bazel/images:grpc_native_push}"
     probe: grpc
     nodeSelector: main-worker-02
+    profile: false
   grpc-jvm:
     image: "{@//bazel/images:grpc_jvm_push}"
     probe: grpc
     nodeSelector: main-worker-03
-    # EXECUTOR=direct etc. per experiment:
-    extraEnv: {}
-  rest:
+    profile: true
+    # :direct won every high-load regime in August; the VT default is the
+    # low-utilization tail-latency arm. Flip per experiment.
+    extraEnv:
+      EXECUTOR: direct
+  rest-h1:
     image: "{@//bazel/images:rest_push}"
     probe: http
     nodeSelector: main-worker-04
+    profile: true
+    extraEnv:
+      H2C: "off"
+  rest-h2c:
+    image: "{@//bazel/images:rest_push}"
+    probe: http
+    nodeSelector: main-worker-04
+    profile: true
+    extraEnv:
+      H2C: "on"
+      # Jetty's default is 128 concurrent streams per connection, which an
+      # open-loop client exceeds at the top of a ramp — and a refused stream
+      # is scored as an error, not as saturation. Must be >= the driver's
+      # maxConcurrentStreams below.
+      H2C_MAX_STREAMS: "1024"
 
 # Identical budgets on every arm — the comparison IS the fixed budget.
 resources:
@@ -33,19 +59,58 @@ probes:
   startupFailureThreshold: 36
   livenessFailureThreshold: 60
 
-# Where load generators run (k6 runner / stream-capacity driver).
+# Where load generators run (the Nighthawk Job / the stream cross-check).
 runner:
   nodeSelector: main-worker-05
 
-# Per-run load objects, off by default: a run is an invocation, not standing
-# state. Enable via --set on a helm upgrade, delete by flipping back.
-testRun:
+# Pyroscope's Java agent on the `profile: true` arms. Off by default: the
+# agent's own overhead is a variable the campaign measures explicitly (one
+# with/without pair per arm) before any profiled table is trusted. The
+# application name gets a -java suffix so these series never merge with the
+# eBPF profiler's, which already labels the pod by its Deployment name.
+profiling:
   enabled: false
-  rate: "200"
-  duration: 2h
-  otelEndpoint: otel-collector.o11y.svc.cluster.local:4317
+  serverAddress: http://pyroscope.o11y.svc.cluster.local:4040
+  event: itimer          # no perf_event_open needed under drop: [ALL]
+  interval: 10ms
+  uploadInterval: 10s
 
-streamJob:
+# One load run, off by default: a run is an invocation, not standing state.
+# Enable via --set on a helm upgrade, delete by flipping back. The Job runs
+# the stepped ramp for ONE arm × mode × tier; the whole ladder is a sequence
+# of these (soak/ladder.sh).
+loadJob:
+  enabled: false
+  image: ghcr.io/bpalermo/nighthawk:latest   # pin a sha per campaign
+  target: rest-h1              # arm name == Service DNS name
+  mode: http1                  # http1 | http2 | grpc-unary | grpc-stream
+  tier: tiny                   # tiny | realistic → /bodies/<tier>.{json,pb}
+  ramp: "200 400 600 800 1000 1200 1400 1600 1800 2000 2200 2400"
+  stepSeconds: "110"
+  warmup:
+    rps: "200"
+    seconds: "120"
+  # Nighthawk event loops; the runner has two CPUs. --streams must divide by it.
+  concurrency: "2"
+  # HTTP/1.1: connections cap in-flight requests, so the knee must be the
+  # server's, not the client's. HTTP/2: streams per connection × connections
+  # must be >= maxActiveRequests or Nighthawk self-throttles, and streams per
+  # connection must be <= the server's H2C_MAX_STREAMS.
+  http1Connections: "256"
+  http2Connections: "8"
+  maxActiveRequests: "4096"
+  maxConcurrentStreams: "512"
+  stream:
+    streams: "20"
+    inflight: "256"
+    drain: 500ms
+  # Appended to the Job name so two runs never collide; set per invocation.
+  runId: ""
+
+# The Clojure stream driver, kept ONLY as a cross-check for the grpc-stream
+# arm: same streams/inflight, its own histogram — agreement with Nighthawk's
+# per-message numbers is what lets the August tables stay comparable.
+streamCheck:
   enabled: false
   target: grpc-jvm
   streams: "20"
