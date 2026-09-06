@@ -55,6 +55,10 @@ spec:
               value: {{ $lj.warmup.seconds | quote }}
             - name: CONCURRENCY
               value: {{ $lj.concurrency | quote }}
+            - name: IDLE_STRATEGY
+              value: {{ $lj.idleStrategy | quote }}
+            - name: BODY_VIA_FILE
+              value: {{ $lj.bodyViaFile | quote }}
             - name: HTTP1_CONNECTIONS
               value: {{ $lj.http1Connections | quote }}
             - name: HTTP2_CONNECTIONS
