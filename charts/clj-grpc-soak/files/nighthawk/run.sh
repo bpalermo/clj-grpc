@@ -28,8 +28,19 @@ log() { echo "run.sh: $*" >&2; }
 
 # The arm's own cgroup counters, base64 so the JSON header stays one line.
 # Failure is tolerated: a missing snapshot costs a CPU column, not the run.
+#
+# Patient, because past the knee the arm is CPU-throttled and its metrics
+# thread waits behind thousands of queued requests: with a 5 s budget the h2c
+# tiny run lost every snapshot from 1200 rps up. Three tries of 30 s each is
+# still short next to a 110 s step, and the snapshot is taken between steps.
 snapshot() {
-  curl -sf --max-time 5 "${METRICS_URL}" 2>/dev/null | base64 | tr -d '\n' || true
+  local out="" try
+  for try in 1 2 3; do
+    out=$(curl -sf --max-time 30 "${METRICS_URL}" 2>/dev/null | base64 | tr -d '\n' || true)
+    [ -n "${out}" ] && break
+    log "metrics snapshot attempt ${try} failed"
+  done
+  printf '%s' "${out}"
 }
 
 # Nighthawk's --rps, --connections and --max-active-requests are PER WORKER

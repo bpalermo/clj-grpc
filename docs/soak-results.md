@@ -41,5 +41,12 @@ could make — transport (HTTP/1.1 → h2c), protocol (REST/JSON → gRPC unary)
 interaction model (unary → stream) — with every adjacent pair of arms
 differing in exactly one thing, on one instrument (Nighthawk), at two payload
 sizes, with CPU attribution from the arms' own cgroup counters and Pyroscope.
-**Conclusion:** _pending; phases land as the Nighthawk fork ships arm64, gRPC
-unary and per-message streaming._
+**Conclusion so far (Phase A, transport, 2026-09-06):** HTTP/1.1 → h2c on the
+same Pedestal/Jetty service buys nothing in capacity — both saturate the core
+at ~925 rps (tiny) / ~750 rps (1.3 KB JSON) — costs 3–16% more CPU per
+request below the knee, improves p99 by 10–30% on the realistic body, and
+admits ~6–9% more at the knee. Under overload h2c is worse: with thousands of
+streams parked at the server it has no flat plateau on 1 KB bodies (517/s and
+p99 40 s at 1,200 offered vs h1's steady ~750/s), because unserved work sits
+inside the server instead of failing at the client. Phases B (gRPC unary) and
+C (streams) pending the Nighthawk fork's P1/P2.

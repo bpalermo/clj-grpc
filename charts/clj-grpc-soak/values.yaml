@@ -87,7 +87,7 @@ loadJob:
   enabled: false
   # P0 image (arm64+amd64, curl, ENTRYPOINT nighthawk_client). :latest is not
   # tagged on the fork yet; pin the sha per campaign.
-  image: ghcr.io/bpalermo/nighthawk:26d79815a392c77d4e101b73f28beef744fe4b55
+  image: ghcr.io/bpalermo/nighthawk:75d3b4b65fca49c7b56d63b06818de61a3c76880
   target: rest-h1              # arm name == Service DNS name
   mode: http1                  # http1 | http2 | grpc-unary | grpc-stream
   tier: tiny                   # tiny | realistic → /bodies/<tier>.{json,pb}
@@ -114,9 +114,10 @@ loadJob:
   # on a throttled driver it distorts timings — use sleep if the Job cannot
   # get resources.cpu Guaranteed.
   idleStrategy: spin
-  # Until the fork's P1 ships --request-body-file, REST bodies travel through
-  # the in-line request-source plugin. Flip to "yes" once pinned to a P1 sha.
-  bodyViaFile: "no"
+  # "yes" sends REST bodies with --request-body-file (the fork's P1, pinned
+  # above). "no" is the P0 path through the in-line request-source plugin,
+  # kept for reproducing Phase A, which ran on it.
+  bodyViaFile: "yes"
   # HTTP/1.1: connections cap in-flight requests, so the knee must be the
   # server's, not the client's. HTTP/2: streams per connection × connections
   # must be >= maxActiveRequests or Nighthawk self-throttles, and streams per
