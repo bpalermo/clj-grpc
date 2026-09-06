@@ -5,9 +5,12 @@
 # <runId>.log; soak/collect.sh turns each into a table.
 #
 #   soak/ladder.sh [RESULTS_DIR] [RUN...]
-#   RUN is arm:mode:tier, e.g. rest-h2c:http2:realistic. With no RUNs, the
-#   whole ladder runs: R1..R8 = {rest-h1:http1, rest-h2c:http2,
-#   grpc-jvm:grpc-unary, grpc-jvm:grpc-stream} × {tiny, realistic}.
+#   RUN is arm:mode:tier[:ramp], e.g. rest-h2c:http2:realistic or
+#   rest-h1:http1:realistic:"100 200 300 400 600 800 1000 1200 1600". The ramp
+#   defaults to the chart's (200→2400) for tiny and to a lower one for the
+#   realistic tier, whose knees come earlier. With no RUNs, the whole ladder
+#   runs: R1..R8 = {rest-h1:http1, rest-h2c:http2, grpc-jvm:grpc-unary,
+#   grpc-jvm:grpc-stream} × {tiny, realistic}.
 #
 # Environment: KUBE_CONTEXT (default talos-main), NAMESPACE (clj-grpc-soak),
 # CHART — how to upgrade: "bazel" (default; bazel run //charts:soak.upgrade,
@@ -50,8 +53,11 @@ wait_ready() { # $1 = deployment
   kubectl --context "${context}" -n "${ns}" rollout status deployment "$1" --timeout=10m >/dev/null
 }
 
+realistic_ramp="${REALISTIC_RAMP:-100 200 300 400 500 600 800 1000 1200 1400 1600}"
+
 for run in "${runs[@]}"; do
-  IFS=: read -r arm mode tier <<<"${run}"
+  IFS=: read -r arm mode tier ramp <<<"${run}"
+  if [ -z "${ramp:-}" ] && [ "${tier}" = "realistic" ]; then ramp="${realistic_ramp}"; fi
   run_id="-$(date -u +%m%d%H%M)"
   job="nh-${arm}-${mode}-${tier}${run_id}"
   log "=== ${run} → ${job} ==="
@@ -67,9 +73,11 @@ for run in "${runs[@]}"; do
   wait_ready "${arm}"
   log "${arm} ready on $(kubectl --context "${context}" -n "${ns}" get pod -l app="${arm}" -o jsonpath='{.items[0].spec.nodeName}')"
 
+  ramp_set=()
+  [ -n "${ramp:-}" ] && ramp_set=(--set "loadJob.ramp=${ramp}")
   upgrade --set loadJob.enabled=true \
           --set "loadJob.target=${arm}" --set "loadJob.mode=${mode}" --set "loadJob.tier=${tier}" \
-          --set "loadJob.runId=${run_id}" >/dev/null
+          --set "loadJob.runId=${run_id}" "${ramp_set[@]}" >/dev/null
   log "job ${job} started; waiting"
   if ! kubectl --context "${context}" -n "${ns}" wait --for=condition=complete "job/${job}" --timeout=90m; then
     log "job ${job} did not complete cleanly; saving what it logged"
