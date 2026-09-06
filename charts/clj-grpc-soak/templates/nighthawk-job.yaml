@@ -1,0 +1,101 @@
+# One load run: a stepped open-loop ramp from Nighthawk against ONE arm, in
+# ONE mode, with ONE payload tier. Off by default — a run is an invocation:
+#   bazel run //charts:soak.upgrade -- --set loadJob.enabled=true,loadJob.target=rest-h2c,loadJob.mode=http2,loadJob.tier=realistic,loadJob.runId=-r2
+# The Job's stdout is the artifact: per step, a #NH-STEP header (rate, window,
+# and the arm's /metrics before and after), Nighthawk's JSON, then #NH-END.
+# soak/collect.sh turns that into the results tables.
+{{- if .Values.loadJob.enabled }}
+{{- $lj := .Values.loadJob }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "nh-%s-%s-%s%s" $lj.target $lj.mode $lj.tier $lj.runId }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/part-of: clj-grpc-soak
+    soak/target: {{ $lj.target }}
+    soak/mode: {{ $lj.mode }}
+    soak/tier: {{ $lj.tier }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: nighthawk
+        app.kubernetes.io/part-of: clj-grpc-soak
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: {{ .Values.runner.nodeSelector }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nighthawk
+          image: {{ $lj.image | quote }}
+          # The image's entrypoint is nighthawk_client; the loop needs a shell
+          # around it, which is the one reason this overrides command.
+          command: ["/bin/sh", "/run/run.sh"]
+          env:
+            - name: TARGET
+              value: {{ printf "%s.%s.svc.cluster.local" $lj.target .Values.namespace | quote }}
+            - name: MODE
+              value: {{ $lj.mode | quote }}
+            - name: TIER
+              value: {{ $lj.tier | quote }}
+            - name: RAMP
+              value: {{ $lj.ramp | quote }}
+            - name: STEP_SECONDS
+              value: {{ $lj.stepSeconds | quote }}
+            - name: WARMUP_RPS
+              value: {{ $lj.warmup.rps | quote }}
+            - name: WARMUP_SECONDS
+              value: {{ $lj.warmup.seconds | quote }}
+            - name: CONCURRENCY
+              value: {{ $lj.concurrency | quote }}
+            - name: HTTP1_CONNECTIONS
+              value: {{ $lj.http1Connections | quote }}
+            - name: HTTP2_CONNECTIONS
+              value: {{ $lj.http2Connections | quote }}
+            - name: MAX_ACTIVE_REQUESTS
+              value: {{ $lj.maxActiveRequests | quote }}
+            - name: MAX_CONCURRENT_STREAMS
+              value: {{ $lj.maxConcurrentStreams | quote }}
+            - name: STREAMS
+              value: {{ $lj.stream.streams | quote }}
+            - name: INFLIGHT
+              value: {{ $lj.stream.inflight | quote }}
+            - name: STREAM_DRAIN
+              value: {{ $lj.stream.drain | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: bodies
+              mountPath: /bodies
+              readOnly: true
+            - name: run
+              mountPath: /run
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "2"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+      volumes:
+        - name: bodies
+          configMap:
+            name: nh-bodies
+        - name: run
+          configMap:
+            name: nh-run
+        - name: tmp
+          emptyDir: {}
+{{- end }}

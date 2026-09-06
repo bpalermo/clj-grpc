@@ -1,0 +1,96 @@
+#!/bin/sh
+# The stepped open-loop ramp, one Nighthawk invocation per step.
+#
+# This is the ONE place a mode (http1 | http2 | grpc-unary | grpc-stream)
+# turns into Nighthawk flags, so the gRPC and streaming flags — which come
+# from the bpalermo/nighthawk fork, not upstream — are a one-file edit here.
+#
+# Output contract (stdout is the artifact; soak/collect.sh parses it):
+#   #NH-STEP {"rps":R,"warmup":true|false,"start":EPOCH,"end":EPOCH,
+#             "metrics_before":"<base64 of GET /metrics>","metrics_after":"<base64>"}
+#   <Nighthawk JSON, one document>
+#   #NH-END
+# Nighthawk writes only its JSON to stdout and logs to stderr, so the JSON
+# between the markers is parseable as-is. Everything this script says for a
+# human goes to stderr too.
+set -eu
+
+: "${TARGET:?}" "${MODE:?}" "${TIER:?}" "${RAMP:?}" "${STEP_SECONDS:?}"
+: "${WARMUP_RPS:=200}" "${WARMUP_SECONDS:=120}" "${CONCURRENCY:=2}"
+: "${HTTP1_CONNECTIONS:=256}" "${HTTP2_CONNECTIONS:=8}"
+: "${MAX_ACTIVE_REQUESTS:=4096}" "${MAX_CONCURRENT_STREAMS:=512}"
+: "${STREAMS:=20}" "${INFLIGHT:=256}" "${STREAM_DRAIN:=500ms}"
+
+METRICS_URL="http://${TARGET}:9090/metrics"
+BASE="http://${TARGET}:8080"
+
+log() { echo "run.sh: $*" >&2; }
+
+# The arm's own cgroup counters, base64 so the JSON header stays one line.
+# Failure is tolerated: a missing snapshot costs a CPU column, not the run.
+snapshot() {
+  curl -sf --max-time 5 "${METRICS_URL}" 2>/dev/null | base64 | tr -d '\n' || true
+}
+
+# Flags common to every mode. Open loop, no client-side queueing, and no
+# default failure predicates: the ramp is MEANT to exceed capacity, and the
+# counters (pool_overflow, grpc_error, stream_deferred) are how saturation is
+# read, not a reason to stop.
+common() {
+  echo "--open-loop --rps $1 --duration $2 --concurrency ${CONCURRENCY}" \
+       "--max-pending-requests 0 --no-default-failure-predicates" \
+       "--sequencer-idle-strategy spin --output-format json"
+}
+
+# Per-mode flags and URI. Bodies are the chart's generated files: JSON for
+# the REST arms, the raw serialized HelloRequest for the gRPC arms — the fork
+# adds the five-byte gRPC frame itself.
+mode_args() {
+  case "${MODE}" in
+    http1)
+      echo "--protocol http1 --connections ${HTTP1_CONNECTIONS} --prefetch-connections" \
+           "--request-method POST --request-header 'content-type: application/json'" \
+           "--request-body-file /bodies/${TIER}.json ${BASE}/hello" ;;
+    http2)
+      echo "--protocol http2 --connections ${HTTP2_CONNECTIONS}" \
+           "--max-active-requests ${MAX_ACTIVE_REQUESTS} --max-concurrent-streams ${MAX_CONCURRENT_STREAMS}" \
+           "--request-method POST --request-header 'content-type: application/json'" \
+           "--request-body-file /bodies/${TIER}.json ${BASE}/hello" ;;
+    grpc-unary)
+      echo "--grpc --connections ${HTTP2_CONNECTIONS}" \
+           "--max-active-requests ${MAX_ACTIVE_REQUESTS} --max-concurrent-streams ${MAX_CONCURRENT_STREAMS}" \
+           "--request-body-file /bodies/${TIER}.pb ${BASE}/acme.greeter.Greeter/SayHello" ;;
+    grpc-stream)
+      echo "--grpc-stream --streams ${STREAMS} --max-inflight-per-stream ${INFLIGHT}" \
+           "--stream-drain-duration ${STREAM_DRAIN}" \
+           "--request-body-file /bodies/${TIER}.pb ${BASE}/acme.greeter.Greeter/Chat" ;;
+    *)
+      log "unknown MODE '${MODE}' (http1|http2|grpc-unary|grpc-stream)"; exit 2 ;;
+  esac
+}
+
+step() {
+  rps="$1"; seconds="$2"; warmup="$3"
+  before="$(snapshot)"
+  start="$(date +%s)"
+  # eval, because mode_args carries a quoted header value.
+  eval "set -- $(common "${rps}" "${seconds}") $(mode_args)"
+  log "step rps=${rps} duration=${seconds}s warmup=${warmup} mode=${MODE} tier=${TIER}"
+  out="$(nighthawk_client "$@")" || log "nighthawk_client exited $? at rps=${rps} (counters tell the story; continuing)"
+  end="$(date +%s)"
+  after="$(snapshot)"
+  printf '#NH-STEP {"rps":%s,"warmup":%s,"start":%s,"end":%s,"metrics_before":"%s","metrics_after":"%s"}\n' \
+    "${rps}" "${warmup}" "${start}" "${end}" "${before}" "${after}"
+  printf '%s\n' "${out}"
+  echo "#NH-END"
+}
+
+log "target=${TARGET} mode=${MODE} tier=${TIER} ramp='${RAMP}' step=${STEP_SECONDS}s"
+log "$(curl -sf --max-time 5 "${METRICS_URL}" | head -c 400 | tr '\n' ' ' || echo 'metrics endpoint unreachable')"
+
+# JIT warmup on a fresh pod: tagged so the collector excludes it.
+step "${WARMUP_RPS}" "${WARMUP_SECONDS}" true
+for rps in ${RAMP}; do
+  step "${rps}" "${STEP_SECONDS}" false
+done
+log "done"

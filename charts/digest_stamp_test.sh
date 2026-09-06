@@ -11,7 +11,10 @@ for repo in soak-grpc-native soak-grpc-jvm soak-rest; do
   echo "$values" | grep -Eq "ghcr\.io/bpalermo/clj-grpc/${repo}@sha256:[a-f0-9]{64}" \
     || { echo "FAIL: no stamped digest for ${repo}"; echo "$values" | grep image:; exit 1; }
 done
+# Two REST arms share one image; a dropped arm would still pass the loop above.
+rest_refs=$(echo "$values" | grep -Ec "ghcr\.io/bpalermo/clj-grpc/soak-rest@sha256:[a-f0-9]{64}")
+[ "$rest_refs" -ge 2 ] || { echo "FAIL: expected the REST image stamped twice (rest-h1, rest-h2c), found ${rest_refs}"; exit 1; }
 if echo "$values" | grep -q '{@'; then
   echo "FAIL: unsubstituted image token remains"; exit 1
 fi
-echo "all three images digest-stamped"
+echo "all images digest-stamped (REST twice)"

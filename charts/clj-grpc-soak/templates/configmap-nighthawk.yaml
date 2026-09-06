@@ -1,0 +1,12 @@
+# The stepped-ramp loop the load Job runs. A ConfigMap rather than baked into
+# an image, so the flag mapping for each mode is one file in this chart.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nh-run
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/part-of: clj-grpc-soak
+data:
+  run.sh: |
+{{ .Files.Get "clj-grpc-soak/files/nighthawk/run.sh" | indent 4 }}
