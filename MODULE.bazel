@@ -34,7 +34,7 @@ use_repo(deps, "deps")
 # For the e2e fixtures: proto_library + java_proto_library give the service
 # tests protoc's reference classes, exactly as clj-protobuf's byte-identity
 # suite uses them.
-bazel_dep(name = "protobuf", version = "35.1", dev_dependency = True)
+bazel_dep(name = "protobuf", version = "36.1.bcr.1", dev_dependency = True)
 bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.3", dev_dependency = True)
 
 # Solely for the sh_test wrapping the version-consistency check.
