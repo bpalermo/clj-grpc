@@ -41,20 +41,38 @@ spec:
       containers:
         - name: server
           image: "{{ $arm.image }}"
+          {{- /* The Pyroscope Java agent attaches only when this arm is
+               profiled AND profiling is on. Attaching is the whole cost: a
+               JVMTI agent, even one whose profiler is idle, turns on the
+               virtual-thread transition hooks (JvmtiThreadState per vthread,
+               VTMS transition bookkeeping) on every mount and unmount, which
+               taxes the VT executor and nothing else — so the images carry
+               the jar but never load it; this env does. */}}
+          {{- $agent := and $arm.profile $.Values.profiling.enabled }}
+          {{- $javaToolOptionsSet := false }}
           env:
             - name: PORT
               value: "8080"
             {{- range $k, $v := ($arm.extraEnv | default dict) }}
+            {{- if and $agent (eq $k "JAVA_TOOL_OPTIONS") }}
+            {{- /* One variable, one entry: an A/B's own JVM flags and the
+                 agent ride together rather than as two JAVA_TOOL_OPTIONS,
+                 of which Kubernetes would keep only the last. */}}
+            {{- $javaToolOptionsSet = true }}
+            - name: JAVA_TOOL_OPTIONS
+              value: {{ printf "%s -javaagent:/pyroscope.jar" $v | quote }}
+            {{- else }}
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
-            {{- if $arm.profile }}
-            {{- if $.Values.profiling.enabled }}
-            # Pyroscope's Java agent (in the JVM images' entrypoint). The
-            # application name is suffixed so these series never merge with
-            # the eBPF profiler's, which labels the pod by Deployment name.
-            - name: PYROSCOPE_AGENT_ENABLED
-              value: "true"
+            {{- end }}
+            {{- if $agent }}
+            {{- if not $javaToolOptionsSet }}
+            - name: JAVA_TOOL_OPTIONS
+              value: "-javaagent:/pyroscope.jar"
+            {{- end }}
+            # The application name is suffixed so these series never merge
+            # with the eBPF profiler's, which labels the pod by Deployment name.
             - name: PYROSCOPE_SERVER_ADDRESS
               value: {{ $.Values.profiling.serverAddress | quote }}
             - name: PYROSCOPE_APPLICATION_NAME
@@ -69,10 +87,6 @@ spec:
               value: {{ printf "arm=%s,namespace=%s,campaign=switch_ladder" $name $.Values.namespace | quote }}
             - name: PYROSCOPE_LOG_LEVEL
               value: "warn"
-            {{- else }}
-            - name: PYROSCOPE_AGENT_ENABLED
-              value: "false"
-            {{- end }}
             {{- end }}
           ports:
             - name: {{ if eq $arm.probe "grpc" }}h2c{{ else }}http{{ end }}

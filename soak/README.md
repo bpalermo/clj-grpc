@@ -31,8 +31,8 @@ arm64 runners and pushed only when their manifest digest changes.
 
 Every rung is driven by [Envoy Nighthawk](https://github.com/envoyproxy/nighthawk)
 from the `bpalermo/nighthawk` fork, which adds what upstream lacks: an arm64
-image, gRPC unary (`--grpc`), and bidi streaming with per-message latency
-(`--grpc-stream`). k6 is gone from this harness — it cannot speak cleartext
+image, gRPC unary (`--grpc-mode unary`), and bidi streaming with per-message
+latency (`--grpc-mode bidi-stream`). k6 is gone from this harness — it cannot speak cleartext
 HTTP/2 at all, and its closed-loop latency could not be reconciled with the
 streaming driver's. Open loop throughout: Nighthawk never applies
 backpressure, so a server past its knee shows up as `pool_overflow` (or
@@ -88,10 +88,19 @@ unary realistic 100→1,600; streams 400→4,800 msg/s at 20 streams and
 
 Every pod is already CPU-profiled by the cluster's OTel eBPF profiler, but a
 JVM's JIT frames come out as hex. The JVM images carry Pyroscope's Java agent
-and `profiling.enabled=true` switches it on (`PROFILING=true soak/ladder.sh`);
-series appear as `<arm>-java`, separate from the eBPF `<arm>` series. The
-agent is a variable: run R3-tiny with and without before trusting any
-profiled table, and never mix profiled and unprofiled rows in one comparison.
+jar, and `profiling.enabled=true` (`PROFILING=true soak/ladder.sh`) is what
+loads it — the chart sets `JAVA_TOOL_OPTIONS=-javaagent:/pyroscope.jar` on
+the `profile: true` arms, and nothing agent-related otherwise. That gate is
+on the *load*, not the profiler, deliberately: an attached JVMTI agent turns
+on the JVM's virtual-thread transition hooks on every mount and unmount even
+while idle, which taxed the VT executor alone and confounded a VT-vs-direct
+comparison (chart 0.2.8 fixed it; earlier JVM images loaded the agent in
+their entrypoint). Series appear as `<arm>-java`, separate from the eBPF
+`<arm>` series. The agent is a variable: run R3-tiny with and without before
+trusting any profiled table, and never mix profiled and unprofiled rows in
+one comparison. An A/B that sets `JAVA_TOOL_OPTIONS` itself through
+`LADDER_EXTRA_SET` keeps its flags: on a profiled run the chart appends the
+agent to them instead of emitting the variable twice.
 
 ## Grading
 

@@ -10,7 +10,10 @@ namespace: clj-grpc-soak
 #   grpc-jvm unary → grpc-jvm stream       interaction model (same arm, different Job mode)
 # grpc-native stays deployed for the density/cold-start story but is not a
 # rung of the ladder. `profile: true` marks the arms the Pyroscope Java agent
-# may attach to when profiling.enabled is set; the native image has no JVM.
+# is loaded into when profiling.enabled is set — loaded, not merely switched
+# on: the JVM images ship the jar but never -javaagent it themselves, because
+# an attached JVMTI agent taxes every virtual-thread mount and unmount even
+# when its profiler is idle. The native image has no JVM.
 arms:
   grpc-native:
     image: "{@//bazel/images:grpc_native_push}"
@@ -67,11 +70,16 @@ probes:
 runner:
   nodeSelector: main-worker-05
 
-# Pyroscope's Java agent on the `profile: true` arms. Off by default: the
-# agent's own overhead is a variable the campaign measures explicitly (one
-# with/without pair per arm) before any profiled table is trusted. The
-# application name gets a -java suffix so these series never merge with the
-# eBPF profiler's, which already labels the pod by its Deployment name.
+# Pyroscope's Java agent on the `profile: true` arms, attached through
+# JAVA_TOOL_OPTIONS=-javaagent:/pyroscope.jar only when this is on; off, no
+# arm carries any agent env at all. Off by default: the agent's own overhead
+# is a variable the campaign measures explicitly (one with/without pair per
+# arm) before any profiled table is trusted — and it is not zero even idle,
+# see the arms comment above. If an arm's extraEnv also sets
+# JAVA_TOOL_OPTIONS (an A/B's JVM flags), the template appends the agent to
+# it rather than emitting the variable twice. The application name gets a
+# -java suffix so these series never merge with the eBPF profiler's, which
+# already labels the pod by its Deployment name.
 profiling:
   enabled: false
   serverAddress: http://pyroscope.o11y.svc.cluster.local:4040
