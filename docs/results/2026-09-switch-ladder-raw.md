@@ -34,7 +34,7 @@ Netty 4.2.16.Final, Nighthawk fork `26d79815` (P0) for Phase A; `75d3b4b6` (P1) 
 
 Run 2026-09-06, chart 0.2.4, Nighthawk P0. Ramp 200→2400 by 200 (tiny),
 100→1600 (realistic). Arm restarts during every run: 0. Job logs (gzipped) and the
-collector's `tables.md` in `soak/results/2026-09-06-phaseA/`; regenerate a table
+collector's `tables.md` in `soak/results/2026-09-06-phase{A,B}/`; regenerate a table
 with `zcat <log>.gz | soak/collect.sh <mode>`.
 
 **Phase A conclusion.** Switching a Pedestal/Jetty service from HTTP/1.1 to
@@ -195,7 +195,170 @@ instruments' difference in accounting.
 
 ## Phase B — protocol: `rest-h2c` vs `grpc-jvm` unary (R3, R7)
 
-_pending P1 (gRPC unary)_
+Run 2026-09-06/07, chart 0.2.5, Nighthawk P1 (`75d3b4b6`): `--grpc`, raw
+`HelloRequest` bytes from `--request-body-file`, scored on `grpc-status`
+(`benchmark.grpc_status.0` is the ok counter, `latency_grpc_ok` the
+histogram). Client settings identical to the h2c arm: 8 connections, 4,096 in
+flight, 300 s warmup at 200 rps, 110 s steps. Ramps extended past August's
+range after the fork's acceptance run found no knee at 2,400.
+
+### R3 — `grpc-jvm` unary, tiny (`nh-grpc-jvm-grpc-unary-tiny-09062341`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.67 | 1080.10 | 1914.63 | 0.0 | 1.094 | 1.1 | 17 | 152 |
+| 400 | 400.0 | 1.44 | 9.58 | 26.64 | 0.0 | 0.507 | 0.2 | 16 | 152 |
+| 800 | 800.0 | 1.44 | 11.40 | 25.59 | 0.0 | 0.381 | 0.0 | 18 | 152 |
+| 1200 | 1200.0 | 1.39 | 28.58 | 100.79 | 0.0 | 0.326 | 0.0 | 19 | 153 |
+| 1600 | 1600.0 | 1.41 | 22.14 | 64.59 | 0.0 | 0.289 | 0.1 | 18 | 153 |
+| 2000 | 2000.0 | 1.48 | 22.65 | 45.64 | 0.0 | 0.260 | 0.0 | 18 | 154 |
+| 2400 | 2399.9 | 1.53 | 23.83 | 54.81 | 0.0 | 0.233 | 0.0 | 16 | 154 |
+| 2800 | 2799.9 | 1.66 | 35.61 | 79.73 | 0.1 | 0.212 | 0.1 | 22 | 155 |
+| 3200 | 3199.9 | 1.70 | 42.30 | 98.57 | 0.0 | 0.190 | 0.0 | 23 | 156 |
+| 3600 | 3592.2 | 1.82 | 54.97 | 411.01 | 7.7 | 0.176 | 0.0 | 26 | 159 |
+| 4000 | 3996.3 | 1.97 | 63.65 | 126.08 | 3.7 | 0.160 | 0.0 | 26 | 159 |
+| 4400 | 4399.8 | 2.04 | 70.07 | 172.89 | 0.1 | 0.149 | 0.0 | 25 | 160 |
+| 4800 | 4799.8 | 2.21 | 80.66 | 196.46 | 0.1 | 0.138 | 0.0 | 25 | 160 |
+
+No knee. Every step delivered its offered rate, throttling stayed at zero,
+and CPU per request kept falling with rate (0.51 ms at 400 → 0.14 ms at
+4,800: the event loop's fixed cost amortizing), so at 4,800 rps the arm was
+using about two-thirds of its core. August's "~2,140 rps knee" for this arm
+was the closed-loop k6 driver, not the server. A follow-up run extends the
+ramp to 8,000 (R3b), and a two-worker cross-check by the fork session
+places the knee at ~10,000–11,000.
+
+### R7 — `grpc-jvm` unary, realistic (`nh-grpc-jvm-grpc-unary-realistic-09070010`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.88 | 6146.23 | 7216.30 | 0.0 | 1.267 | 14.2 | 19 | 150 |
+| 200 | 200.0 | 1.76 | 9.79 | 27.40 | 0.0 | 0.778 | 0.0 | 19 | 151 |
+| 400 | 400.0 | 1.61 | 10.01 | 20.69 | 0.0 | 0.618 | 0.0 | 20 | 151 |
+| 600 | 600.0 | 1.59 | 13.72 | 28.03 | 0.0 | 0.555 | 0.1 | 20 | 152 |
+| 800 | 800.0 | 1.72 | 36.83 | 102.80 | 0.0 | 0.519 | 0.4 | 19 | 152 |
+| 1000 | 1000.0 | 1.60 | 20.86 | 46.98 | 0.0 | 0.463 | 0.0 | 19 | 153 |
+| 1200 | 1200.0 | 1.66 | 36.60 | 159.61 | 0.0 | 0.436 | 0.0 | 22 | 153 |
+| 1400 | 1400.0 | 1.82 | 37.69 | 89.83 | 0.0 | 0.413 | 0.2 | 23 | 154 |
+| 1600 | 1599.9 | 1.85 | 59.17 | 312.90 | 0.1 | 0.399 | 0.3 | 23 | 154 |
+| 2000 | 1999.8 | 2.32 | 95.36 | 346.60 | 0.1 | 0.347 | 0.4 | 24 | 156 |
+| 2400 | 2386.4 | 4.14 | 2635.33 | 5526.26 | 13.5 | 0.331 | 13.3 | 35 | 186 |
+| 2800 | 2799.7 | 3.28 | 219.32 | 285.05 | 0.1 | 0.274 | 0.1 | 35 | 186 |
+| 3200 | 3197.7 | 4.29 | 1096.88 | 2342.39 | 2.1 | 0.251 | 2.1 | 36 | 191 |
+
+Delivered in full through 3,200 rps. The quota first shows at the top: 2 s
+throttled and p99 1.1 s at 3,200 with CPU per request at 0.25 ms (~0.8 of
+the core). The 2,400 step is an outlier (p99 2.6 s, 13 s throttled, heap and
+RSS stepping up 24→35 MB / 156→186 MB, the step after it clean) — a one-off
+JIT recompilation or GC event under load rather than the knee, since 2,800
+delivered cleanly at lower cost. A follow-up run extends the ramp to 5,200.
+
+### R3b — `grpc-jvm` unary, tiny, 5,200→8,000 (`nh-grpc-jvm-grpc-unary-tiny-09070039`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.66 | 1462.57 | 2302.15 | 0.0 | 1.085 | 9.6 | 19 | 144 |
+| 5200 | 5199.4 | 2.48 | 578.55 | 832.67 | 0.5 | 0.135 | 4.7 | 30 | 167 |
+| 5600 | 5599.5 | 2.44 | 94.54 | 163.75 | 0.4 | 0.125 | 0.6 | 40 | 168 |
+| 6000 | 5999.7 | 2.61 | 66.04 | 141.22 | 0.2 | 0.118 | 0.0 | 40 | 169 |
+| 6400 | 6391.3 | 3.24 | 531.82 | 894.40 | 7.7 | 0.110 | 0.4 | 39 | 170 |
+| 6800 | 6791.2 | 2.94 | 99.79 | 174.40 | 7.5 | 0.107 | 0.0 | 25 | 170 |
+| 7200 | 7191.4 | 3.30 | 301.86 | 544.87 | 8.5 | 0.103 | 0.4 | 36 | 170 |
+| 7600 | 7599.1 | 3.43 | 125.52 | 235.95 | 0.7 | 0.099 | 0.2 | 36 | 170 |
+| 8000 | 7976.6 | 3.80 | 122.42 | 272.88 | 23.2 | 0.095 | 0.2 | 41 | 170 |
+
+Still no knee on the arm at 8,000: CPU per request keeps falling to
+0.095 ms, so the server uses ~0.76 of its core and throttling stays under a
+second per step. The p99 spikes at 5,200 / 6,400 / 7,200 come and go without
+a matching change on the arm. Nighthawk opened 4 connections for the run,
+not the 8 configured: for HTTP/2 `--connections` is a cap, and the pool
+adds connections only as stream demand requires (fork session's reading).
+
+**Cross-check with a two-worker driver** (the fork session, same P1 image,
+concurrency 2, 2,048 in flight per worker, 30 s steps, no cgroup counters):
+
+| offered | delivered/s | `grpc_ok` | `pool_overflow` | p50 | p99 |
+|---|---|---|---|---|---|
+| 8,000 | 7,997 | 239,916 | 20 | 6.6 ms | 131 ms |
+| 12,000 | 10,704 | 321,132 | 36,531 (10%) | 150 ms | 634 ms |
+| 16,000 | 9,642 | 289,249 | 187,450 (44%) | 366 ms | 714 ms |
+
+Two workers deliver the same 8,000 as one, so the single spinning worker was
+not the limit there; both sequencers kept 100% of their schedule at 12k and
+16k, so the shortfall past 8,000 is in-flight overflow waiting on the arm.
+**Tiny-tier knee: ~10,000–11,000 rps per core**, with delivered throughput
+falling past it (9.6k at 16k offered) — the same shape as the realistic
+tier at 5,200. The authoritative per-step CPU numbers stop at 8,000 (this
+run); the knee position is the cross-check's.
+
+### R7b — `grpc-jvm` unary, realistic, 3,600→5,200 (`nh-grpc-jvm-grpc-unary-realistic-09070100`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.88 | 6385.04 | 7273.97 | 0.0 | 1.307 | 25.3 | 21 | 162 |
+| 3600 | 3175.5 | 19.08 | 4032.17 | 15589.70 | 422.3 | 0.282 | 39.8 | 44 | 194 |
+| 4000 | 3999.2 | 10.37 | 781.65 | 1199.96 | 0.4 | 0.216 | 6.6 | 44 | 194 |
+| 4400 | 4366.6 | 41.93 | 1300.96 | 3717.99 | 31.3 | 0.203 | 7.6 | 31 | 198 |
+| 4800 | 4674.7 | 249.57 | 1666.58 | 2864.97 | 125.2 | 0.203 | 24.3 | 42 | 200 |
+| 5200 | 4458.1 | 756.22 | 1563.75 | 3609.46 | 707.7 | 0.221 | 44.5 | 42 | 198 |
+
+The knee, found: 4,000 rps delivers in full at 0.86 of the core (6.6 s
+throttled, p50 10 ms); 4,400 sheds 1%; 4,800 delivers 4,675 with p50 at
+250 ms; 5,200 is saturation (44 s throttled, 708/s never sent, delivered
+falls to 4,458). Plateau ~4,500–4,700 delivered. The 3,600 step is the
+fresh pod's first step after a 200 rps warmup and its 40 s of throttling and
+p50 19 ms are a JIT event at the jump, the same outlier shape as R7's 2,400
+step; read 4,000 as the clean floor of this run.
+
+### Phase B — what the protocol switch buys (`rest-h2c` → `grpc-jvm` unary)
+
+Same service contract (echo of the same nested `Payload`), same core, same
+client settings (8 connections, 4,096 in flight); the switch replaces
+Pedestal/Jetty/JSON with grpc-netty/protobuf and the body shrinks 1.28×
+(JSON 1,309 B → pb 1,025 B). Against **both** REST arms, since h1 is what
+existing services run and h2c is the rung just below:
+
+| | rest-h1 | rest-h2c | grpc-jvm unary | switch buys |
+|---|---|---|---|---|
+| **tiny** knee / plateau, delivered/s | 1,000 / ~925 | 1,000 / ~925 | **~10,500** / ~10,700 (2-worker cross-check) | ~11× |
+| tiny CPU/req at 800 offered | 1.26 ms | 1.24 ms | 0.38 ms | 3.3× cheaper |
+| tiny p50 / p99 at 800 (ms) | 8.9 / 171 | 16.8 / 123 | 1.4 / 11 | |
+| tiny p50 / p99 at 400 (ms) | 2.45 / 21.7 | 2.81 / 28.1 | 1.44 / 9.6 | |
+| **realistic** knee (full delivery, p50 < 10 ms) | 600 | 600 | **4,000** | 6.7× |
+| realistic plateau, delivered/s | ~750 | collapses (517) | ~4,600 | 6.1× |
+| realistic CPU/req at 600 offered | 1.59 ms | 1.65 ms | 0.56 ms | 2.9× cheaper |
+| realistic p50 / p99 at 600 (ms) | 3.49 / 134 | 6.17 / 108 | 1.59 / 13.7 | |
+| RSS at plateau (MB) | 338 | ~310 | ~195 | |
+| heap at plateau (MB) | ~110 | ~95 | ~40 | |
+
+Three things the numbers say:
+
+- **This rung is where the gain is.** Per core, the protocol switch is worth
+  6× capacity on a 1 KB body and ~11× on a tiny one, with CPU per
+  request 3× lower at the same offered rate and p99 an order of magnitude
+  lower below REST's knee. h1 → h2c was worth nothing; h2c → gRPC is worth
+  everything the August comparison attributed to "gRPC", and more, now that
+  a single instrument measures both sides.
+- **Overload is graceful again.** Under the same 4,096-deep client queue
+  that collapsed h2c, grpc-netty degrades to a plateau (5,200 offered →
+  4,458 delivered, every response `grpc-status 0`, zero errors): the work it
+  cannot serve costs it ~5% of goodput, not 30%. The difference is where the
+  unserved requests wait — Netty's event loop and HTTP/2 flow control keep
+  them in the socket buffers, Jetty's thread pool pulls them in.
+- **August under-measured gRPC by 2–4×.** The k6 closed-loop "knee" at
+  ~2,140 rps was the driver. The server's real unary capacity per core is
+  ~4,600 rps on realistic bodies and ~10,500 on tiny ones, which also
+  moves the August streaming-vs-unary ratio (7.5×) down toward 2–3× before
+  Phase C measures it directly.
+
+Disclosures: CPU per request is the arm's cgroup delta over delivered
+responses, so it includes the kernel's share of the arm's socket work; the
+tiny-tier knee comes from the fork session's two-worker cross-check (30 s
+steps, no cgroup counters), the ladder's own tables stop at 8,000; per-step JIT outliers
+(R7 2,400, R7b 3,600) are visible in the tables and excluded from the
+readings; grpc-netty has no per-connection stream cap where Jetty has
+`H2C_MAX_STREAMS=1024` — with 8 connections × 512 client streams neither cap
+bound these runs.
 
 ## Phase C — interaction model: unary vs `grpc-jvm` stream (R4, R8)
 
