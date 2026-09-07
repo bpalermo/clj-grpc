@@ -67,10 +67,10 @@
       ]
     },
     {
-      "coordinates": "com.github.bpalermo/clj-protobuf:0.2.1",
+      "coordinates": "com.github.bpalermo/clj-protobuf:0.2.2",
       "target": "com_github_bpalermo_clj_protobuf",
-      "path": "com/github/bpalermo/clj-protobuf/0.2.1/clj-protobuf-0.2.1.jar",
-      "sha256": "376c40209d82122194420b78cf1ec6ecb32d7879d97d97ce55c67c69ed112a6b",
+      "path": "com/github/bpalermo/clj-protobuf/0.2.2/clj-protobuf-0.2.2.jar",
+      "sha256": "9eefbde85815df6bc24f27b9ed21ddf441ab512689aeff75651a7ece4e3af7ab",
       "deps": [
         "com_google_protobuf_protobuf_java"
       ]
@@ -144,19 +144,20 @@
       "deps": []
     },
     {
-      "coordinates": "com.google.protobuf/protobuf-java:4.35.1",
+      "coordinates": "com.google.protobuf/protobuf-java:4.36.1",
       "target": "com_google_protobuf_protobuf_java",
-      "path": "com/google/protobuf/protobuf-java/4.35.1/protobuf-java-4.35.1.jar",
-      "sha256": "a4345ba2aa009912ff6f90467fea2d104605256b72c50840d75f13256638a472",
+      "path": "com/google/protobuf/protobuf-java/4.36.1/protobuf-java-4.36.1.jar",
+      "sha256": "26434a93561a1a44bf7157b2630fa73a5b4d8df20e94df167bc03fcd14abd7e4",
       "deps": []
     },
     {
-      "coordinates": "com.google.protobuf/protobuf-java-util:3.25.9",
+      "coordinates": "com.google.protobuf/protobuf-java-util:4.36.1",
       "target": "com_google_protobuf_protobuf_java_util",
-      "path": "com/google/protobuf/protobuf-java-util/3.25.9/protobuf-java-util-3.25.9.jar",
-      "sha256": "805da7926a7615f2e26b66634ed352d50364550052163a50c3759d8ac075dc25",
+      "path": "com/google/protobuf/protobuf-java-util/4.36.1/protobuf-java-util-4.36.1.jar",
+      "sha256": "90722adb6fa80fb0dba8d49602abae2d14f8483e922cae29431d78edbfd4d040",
       "deps": [
-        "com_google_code_findbugs_jsr305"
+        "com_google_code_findbugs_jsr305",
+        "com_google_protobuf_protobuf_java"
       ]
     },
     {
@@ -273,7 +274,6 @@
         "com_google_code_gson_gson",
         "com_google_errorprone_error_prone_annotations",
         "com_google_guava_guava",
-        "com_google_protobuf_protobuf_java_util",
         "io_grpc_grpc_util"
       ]
     },

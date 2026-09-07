@@ -22,7 +22,13 @@
 ;; wanted. Document-only add-on.
 {:paths ["src"]
  :deps {org.clojure/clojure {:mvn/version "1.12.5"}
-        com.github.bpalermo/clj-protobuf {:mvn/version "0.2.1"}
+        com.github.bpalermo/clj-protobuf {:mvn/version "0.2.2"}
+        ;; protobuf-java 4.36.1 arrives through clj-protobuf; protobuf-java-util
+        ;; must match it, and grpc-protobuf 1.83.1's pom drags util in at 3.25.9
+        ;; — a 3.x util next to a 4.x core, which clj-protobuf's README calls
+        ;; unsupported. Pinned top-level for the same reason as the netty block:
+        ;; a top-level pin is what beats a transitive pom version.
+        com.google.protobuf/protobuf-java-util {:mvn/version "4.36.1"}
 
         io.grpc/grpc-api {:mvn/version "1.83.1"}
         io.grpc/grpc-core {:mvn/version "1.83.1"}

@@ -24,6 +24,10 @@ clj_library(
     deps = [
         "@deps//:com_github_bpalermo_clj_protobuf",
         "@deps//:com_google_protobuf_protobuf_java",
+        # Pinned top-level in deps.edn (to match protobuf-java, not the 3.x
+        # grpc-protobuf's pom names), so like the netty block below the lock
+        # records no edge to it and it must be listed here.
+        "@deps//:com_google_protobuf_protobuf_java_util",
         "@deps//:io_grpc_grpc_api",
         "@deps//:io_grpc_grpc_core",
         "@deps//:io_grpc_grpc_netty",
