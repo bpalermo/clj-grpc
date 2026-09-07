@@ -48,5 +48,11 @@ request below the knee, improves p99 by 10–30% on the realistic body, and
 admits ~6–9% more at the knee. Under overload h2c is worse: with thousands of
 streams parked at the server it has no flat plateau on 1 KB bodies (517/s and
 p99 40 s at 1,200 offered vs h1's steady ~750/s), because unserved work sits
-inside the server instead of failing at the client. Phases B (gRPC unary) and
-C (streams) pending the Nighthawk fork's P1/P2.
+inside the server instead of failing at the client. **Phase B (protocol, 2026-09-07):** h2c → gRPC unary on the same core is
+where the gain is — 6× capacity on a 1 KB body (knee 600 → 4,000 rps,
+plateau ~750 → ~4,600) and > 8× on tiny (the arm still at 0.76 core when the
+single-worker driver ran out at 8,000), CPU per request 3× lower at the same
+offered rate, p99 an order of magnitude lower below REST's knee, and a
+graceful plateau under the client queue that collapsed h2c. August's k6
+"knee" at ~2,140 was the driver; the server's unary capacity is 2–4× higher.
+Phase C (streams) pending the Nighthawk fork's P2.
