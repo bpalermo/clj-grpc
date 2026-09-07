@@ -10,5 +10,5 @@ type: application
 # content is identified by appVersion (stamped with the git commit) and by
 # the image digests inside values — charts are configuration, not
 # per-commit artifacts.
-version: 0.2.6
+version: 0.2.7
 appVersion: "{STABLE_GIT_COMMIT}"

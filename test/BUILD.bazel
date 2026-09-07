@@ -63,6 +63,58 @@ clj_test(
     deps = [":e2e_test_lib"],
 )
 
+# The non-hinted arm: TEST_DEPS without protoc's Java classes, so the fixture's
+# class hints resolve to nothing and every prototype — the namespace's and the
+# service's — comes from clj-protobuf's runtime fallback. Two positions of the
+# -Dclj-protobuf.codec kill switch, each its own JVM because the runtime reads
+# the property once at namespace load: the compiled codec (the default since
+# clj-protobuf 0.2.0) and DynamicMessage.
+CODEC_TEST_DEPS = [d for d in TEST_DEPS if d != "//test/proto:greeter_java_proto"]
+
+CODEC_POSITIONS = {
+    "compiled": [],
+    "dynamic": ["-Dclj-protobuf.codec=dynamic"],
+}
+
+clj_library(
+    name = "service_codec_test_lib",
+    srcs = ["clj_grpc/service_codec_test.clj"],
+    namespaces = ["clj-grpc.service-codec-test"],
+    strip_prefix = "test",
+    deps = CODEC_TEST_DEPS,
+)
+
+[
+    clj_test(
+        name = "service_codec_{}_test".format(position),
+        jvm_flags = flags,
+        ns = "clj-grpc.service-codec-test",
+        deps = [":service_codec_test_lib"],
+    )
+    for position, flags in CODEC_POSITIONS.items()
+]
+
+# The whole e2e suite over the wire on each fallback arm — the same namespace
+# as :e2e_test, compiled against the classpath without the Java classes.
+clj_library(
+    name = "e2e_codec_test_lib",
+    srcs = ["clj_grpc/e2e_test.clj"],
+    namespaces = ["clj-grpc.e2e-test"],
+    strip_prefix = "test",
+    deps = CODEC_TEST_DEPS,
+)
+
+[
+    clj_test(
+        name = "e2e_{}_test".format(position),
+        size = "medium",
+        jvm_flags = flags,
+        ns = "clj-grpc.e2e-test",
+        deps = [":e2e_codec_test_lib"],
+    )
+    for position, flags in CODEC_POSITIONS.items()
+]
+
 clj_library(
     name = "knative_preset_test_lib",
     srcs = ["clj_grpc/knative_preset_test.clj"],

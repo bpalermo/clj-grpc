@@ -30,7 +30,7 @@ clj_library(
         ":echo_gen",
         # protoc's Java classes: with these on the classpath the generated
         # namespace and the service layer resolve the hinted com.example.echo.*
-        # prototypes instead of DynamicMessage. Optional either way.
+        # prototypes instead of clj-protobuf's compiled codec. Optional either way.
         "//examples/proto:echo_java_proto",
         "//src:clj_grpc",
         "@deps//:com_github_bpalermo_clj_protobuf",

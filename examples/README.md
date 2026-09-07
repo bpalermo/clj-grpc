@@ -65,7 +65,8 @@ grpcurl -plaintext -d '{"text": "hi"}' localhost:8080 example.echo.Echo/Say
 
 `//examples/proto:echo_java_proto` puts protoc's Java classes on the classpath
 so the generated namespace resolves its class hints; drop that dep and
-everything still runs on the DynamicMessage arm — a plain Clojars consumer
+everything still runs on the embedded-descriptor arm, clj-protobuf's compiled
+codec — a plain Clojars consumer
 needs no protoc Java output at all.
 
 ## Native image

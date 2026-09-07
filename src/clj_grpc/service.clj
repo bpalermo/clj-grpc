@@ -12,23 +12,22 @@
   both the server and client builders consume.
 
   Pool discipline, the one subtle thing here: request/response prototypes must
-  live in the same descriptor pool as the generated namespace's message
-  prototypes, or the generated proto->X fns crash on parsed messages
-  (protobuf-java forbids cross-pool field access). So prototypes are resolved
-  exactly the way the emitter's hints are: a Java class name derived by the
-  same rules protoc uses (only for java_multiple_files or edition-2024+
-  top-level classes — the same subset the plugin hints), verified against the
-  descriptor, silently falling back to DynamicMessage over the SAME
-  FileDescriptor instance the namespace's own prototypes use. Both arms align;
-  being wrong costs the optimisation, never correctness."
-  (:require [clojure.string :as string])
+  live in the same descriptor pool — and on the same codec — as the generated
+  namespace's message prototypes, or the generated proto->X fns crash on
+  parsed messages (protobuf-java forbids cross-pool field access). So the
+  service chooses nothing: it hands each method's request and response
+  Descriptor — the instance the namespace's own FileDescriptor owns — to
+  clj-protobuf.runtime/prototype, which derives the Java class hint by the
+  emitter's own rule and picks the arm rt/message gave the namespace for
+  that message: the generated class, its compiled codec, or DynamicMessage
+  under -Dclj-protobuf.codec=dynamic. One rule, in one place, on both sides
+  of the wire; being wrong costs the optimisation, never correctness."
+  (:require [clj-protobuf.runtime :as rt]
+            [clojure.string :as string])
   (:import [com.google.protobuf
-            DescriptorProtos$FileDescriptorProto
-            Descriptors$Descriptor
             Descriptors$FileDescriptor
             Descriptors$MethodDescriptor
             Descriptors$ServiceDescriptor
-            DynamicMessage
             Message]
            [io.grpc MethodDescriptor MethodDescriptor$MethodType]
            [io.grpc.protobuf ProtoUtils]))
@@ -36,51 +35,19 @@
 (set! *warn-on-reflection* true)
 
 ;; ---------------------------------------------------------------------------
-;; Prototype resolution (mirrors clj-protobuf.runtime/message's hint machinery)
-
-(def ^:private edition-2024-number
-  (.getNumber com.google.protobuf.DescriptorProtos$Edition/EDITION_2024))
-
-(defn- top-level-java-classes?
-  [^DescriptorProtos$FileDescriptorProto fdp]
-  (or (.getJavaMultipleFiles (.getOptions fdp))
-      (and (= "editions" (.getSyntax fdp))
-           (>= (.getNumber (.getEdition fdp)) edition-2024-number))))
-
-(defn- java-class-hint
-  "The Java class protoc would generate for this message, by the same rules the
-  emitter hints with: derived only when classes are top-level
-  (java_multiple_files, or edition 2024+ where nest_in_file_class defaults NO);
-  nested messages join with $. nil when underivable — pre-2024 file-class
-  nesting rules are deliberately not reimplemented, same as the emitter."
-  [^Descriptors$Descriptor desc]
-  (let [file (.getFile desc)
-        fdp  (.toProto file)]
-    (when (top-level-java-classes? fdp)
-      (let [pkg  (let [jp (.getJavaPackage (.getOptions fdp))]
-                   (if (string/blank? jp) (.getPackage fdp) jp))
-            path (loop [d desc, segs ()]
-                   (if d
-                     (recur (.getContainingType d) (cons (.getName d) segs))
-                     segs))]
-        (str pkg (when-not (string/blank? pkg) ".")
-             (string/join "$" path))))))
+;; Prototypes: the runtime's choice, not ours
 
 (defn- prototype
-  "A default instance for a Descriptor, hinted-class when it resolves and
-  describes the same message, DynamicMessage over the same descriptor pool
-  otherwise."
-  ^Message [^Descriptors$Descriptor desc]
-  (or (when-let [hint (java-class-hint desc)]
-        (try
-          (let [cls (Class/forName hint)
-                m   (.getMethod cls "getDefaultInstance" (make-array Class 0))
-                inst ^Message (.invoke m nil (make-array Object 0))]
-            (when (= (.getFullName (.getDescriptorForType inst))
-                     (.getFullName desc))
-              inst))
-          (catch Throwable _ nil)))
-      (DynamicMessage/getDefaultInstance desc)))
+  "The marshaller prototype for a method's request or response type: exactly
+  what the generated namespace's own rt/message call yielded for the same
+  message, so a request the marshaller parses is one the proto->X fns read.
+  clj-grpc used to derive the class hint and build the fallback itself; with
+  clj-protobuf's compiled codec that put inbound parsing on DynamicMessage's
+  FieldSet path beside a compiled namespace, and its copy of the hint rule
+  could drift (it did: nest_in_file_class = YES). rt/prototype (0.2.1) owns
+  both. Same pool by construction: the Descriptor is the file's own."
+  ^Message [desc]
+  (rt/prototype desc))
 
 ;; ---------------------------------------------------------------------------
 ;; The service value
@@ -147,12 +114,13 @@
   "The service value for a service declared in `file-descriptor` — the whole
   generated-code contract for services."
   [^Descriptors$FileDescriptor fd ^String service-name]
-  (let [sd (or (.findServiceByName fd service-name)
-               (throw (ex-info (str "no service " service-name
-                                    " in " (.getName fd))
-                               {:clj-grpc/error :no-such-service
-                                :service service-name
-                                :file (.getName fd)})))
+  (let [^Descriptors$ServiceDescriptor sd
+        (or (.findServiceByName fd service-name)
+            (throw (ex-info (str "no service " service-name
+                                 " in " (.getName fd))
+                            {:clj-grpc/error :no-such-service
+                             :service service-name
+                             :file (.getName fd)})))
         full (.getFullName sd)]
     (->Service (.getName sd) full fd sd
                (mapv #(build-method full %) (.getMethods sd)))))

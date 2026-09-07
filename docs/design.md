@@ -28,15 +28,22 @@ server and the client consume, and the only coupling between them.
 clj-protobuf's rule — never mix descriptor pools — lands here with force: a
 marshaller's prototype decides which pool parsed requests live in, and
 handlers hand those requests straight to the generated `proto->X` fns, whose
-handles live in the *namespace's* pool. So `service` resolves method
-prototypes exactly the way the emitter's hints do: derive the Java class name
-protoc would generate (only for `java_multiple_files` or edition-2024
-top-level classes — the same subset the plugin hints), verify it describes the
-same message, fall back silently to `DynamicMessage` **over the same
-`FileDescriptor` instance the namespace uses**. Both arms align: with the
-generated classes present, everything is the generated pool; without them,
-everything is the embedded pool. The service tests pin the property; the e2e
-suite exercises it over the wire.
+handles live in the *namespace's* pool. So `service` chooses nothing: it
+hands each method's request and response `Descriptor` — owned by **the same
+`FileDescriptor` instance the namespace uses** — to
+`clj-protobuf.runtime/prototype` (0.2.1), which derives the Java class hint
+by the emitter's own rule and returns the arm `rt/message` gave the
+namespace for that message: the generated class when it resolves and
+describes the same message, else the compiled codec, else `DynamicMessage`
+under `-Dclj-protobuf.codec=dynamic`. The marshaller's prototype is
+therefore the namespace's arm by construction, so inbound parsing lands on
+the codec `proto->X` reads instead of on `DynamicMessage`'s FieldSet path
+beside a compiled namespace — and clj-grpc carries no copy of the hint rule
+to drift (its old copy did, on `nest_in_file_class = YES`). Both arms
+align: with the generated classes present, everything is the generated
+pool; without them, everything is the embedded pool on one codec. The
+service tests pin the property on the hinted arm, the codec tests on both
+fallback arms; the e2e suite exercises all three over the wire.
 
 ## Non-shaded Netty, deliberately
 
