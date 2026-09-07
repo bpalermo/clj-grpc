@@ -21,7 +21,7 @@ mode="${1:?usage: collect.sh MODE < job.log}"
 case "${mode}" in
   http1|http2)  latency_id="benchmark_http_client.latency_2xx";      ok_counter="benchmark.http_2xx";     knee_counter="benchmark.pool_overflow" ;;
   grpc-unary)   latency_id="benchmark_http_client.latency_grpc_ok";  ok_counter="benchmark.grpc_status.0"; knee_counter="benchmark.pool_overflow" ;;
-  grpc-stream)  latency_id="benchmark_stream.message_latency";       ok_counter="";                        knee_counter="benchmark.stream_deferred" ;;
+  grpc-stream)  latency_id="benchmark_stream.message_latency";       ok_counter="benchmark.stream_messages_received"; knee_counter="benchmark.stream_deferred" ;;
   *) echo "collect.sh: unknown mode '${mode}'" >&2; exit 2 ;;
 esac
 
