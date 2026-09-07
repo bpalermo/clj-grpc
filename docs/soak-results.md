@@ -65,5 +65,13 @@ p50 ≤ 3 ms to the knee, a flat plateau under any overload with zero errors.
 ~4,600 (6×) → stream ~8,200 (11×).** August's 7.5×/16× streaming ratios
 were the k6 driver under-measuring unary; on one instrument they are
 1.8×/11×. Rung 2 is where the money is; rung 1 is free and worthless;
-rung 3 is a contract change for 1.8×. Deferred: Pyroscope attribution of
-where the per-request cost goes.
+rung 3 is a contract change for 1.8×. **Attribution (Pyroscope, agent
+overhead measured at +1–6% CPU):** REST's extra ~1.3 ms per request is not
+JSON (0.06 ms) but the Pedestal/Clojure request pipeline (0.41 ms of
+persistent maps, Vars and seqs, plus 0.24 ms of Java collections and locks),
+Jetty (0.17 ms) and 8× the syscall time of gRPC (per-connection `writev`
+and thread-pool hand-offs vs one multiplexed socket on an event loop). On
+the gRPC arms the largest software cost, 20–26%, is protobuf's
+descriptor-driven field access under the clj-protobuf codec, which the
+typed `interop=true` path (protoc-gen-clojure 0.5.1) removes; streaming's
+gain shows as grpc-java shrinking from 8% to 4% of samples.

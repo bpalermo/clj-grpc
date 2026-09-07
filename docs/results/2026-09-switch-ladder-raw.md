@@ -572,7 +572,104 @@ table anywhere in the ladder: the JIT warmup of a fresh 1-CPU JVM pod
 (minutes, every arm) and the first-step outliers it leaves, which are a
 deployment concern (warm before serving) rather than a protocol one.
 
-Not done in this campaign, deferred with the plan's profiled repeats:
-Pyroscope flamegraph attribution of the per-request cost on each arm
-(Jetty/Pedestal/jsonista vs Netty/grpc/protobuf vs kernel), which would say
-*where* the 1.59 → 0.56 ms goes; the cgroup numbers say only how much.
+Where the 1.59 → 0.56 ms goes is the next section.
+
+## Profiled repeats — where the per-request cost goes
+
+Pyroscope's Java agent (async-profiler 2.9.1, `itimer` at 100 Hz, in-process
+so kernel frames appear as their libc entry points) on the JVM arms, chart
+0.2.6 with `profiling.enabled=true`. Two questions: does the agent change
+the numbers, and what is each arm doing per request.
+
+### Agent overhead — R3 repeated with the agent on (`nh-grpc-jvm-grpc-unary-tiny-09071406`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.66 | 1625.03 | 2046.23 | 0.0 | 1.172 | 4.2 | 21 | 159 |
+| 400 | 400.0 | 1.45 | 11.67 | 33.99 | 0.0 | 0.537 | 0.1 | 24 | 159 |
+| 800 | 800.0 | 1.44 | 10.83 | 28.26 | 0.0 | 0.383 | 0.0 | 24 | 160 |
+| 1200 | 1200.0 | 1.39 | 16.78 | 157.72 | 0.0 | 0.331 | 0.0 | 20 | 160 |
+| 1600 | 1599.9 | 1.40 | 15.46 | 71.22 | 0.0 | 0.298 | 0.0 | 22 | 160 |
+| 2000 | 2000.0 | 1.50 | 32.18 | 80.25 | 0.0 | 0.270 | 0.6 | 23 | 162 |
+| 2400 | 2399.9 | 1.57 | 43.12 | 235.78 | 0.1 | 0.241 | 0.3 | 19 | 162 |
+| 2800 | 2799.9 | 1.77 | 71.98 | 180.98 | 0.1 | 0.214 | 0.0 | 25 | 164 |
+| 3200 | 3199.9 | 1.78 | 86.88 | 200.47 | 0.1 | 0.195 | 0.0 | 25 | 166 |
+| 3600 | 3599.8 | 1.86 | 69.97 | 180.81 | 0.1 | 0.181 | 0.0 | 21 | 170 |
+| 4000 | 3995.2 | 1.99 | 83.80 | 273.97 | 4.7 | 0.166 | 0.1 | 22 | 172 |
+| 4400 | 4399.7 | 2.07 | 49.24 | 124.40 | 0.1 | 0.153 | 0.0 | 21 | 172 |
+| 4800 | 4799.7 | 2.23 | 72.66 | 257.36 | 0.2 | 0.144 | 0.0 | 23 | 173 |
+
+Against the unprofiled R3 (Phase B): delivered identical at every step,
+p50 within 0.1 ms, CPU per request +1–6% (0.507 → 0.537 ms at 400,
+0.138 → 0.144 at 4,800; median +3%), p99 inside run-to-run noise (better at
+five steps, worse at seven). The REST arm's ramped repeat (below) costs 1.3%
+more CPU per request at 600 than its unprofiled run. The agent is cheap
+enough that shares can be read; absolute costs below are the profiled
+run's own `cpu ms/req`, so they carry the agent's few percent.
+
+### Attribution at matched moderate load
+
+One ramped run per arm, the last step read: REST h1 at 600 rps
+(`nh-rest-h1-http1-realistic-09071619`), gRPC unary at 3,000
+(`nh-grpc-jvm-grpc-unary-realistic-09071632`), gRPC stream at 5,000 msg/s over
+40 streams (`nh-grpc-jvm-grpc-stream-realistic-09071644`), all on the 1 KB
+body and all at ~0.75–0.8 of the arm's knee. (A first attempt with a
+single step straight after the 200 rps warmup was discarded: it profiled
+the first-step JIT outlier — 23% of unary's samples in the C2 compiler and
+GC, delivered down 15% — the same artifact every fresh-pod run shows.
+Its logs are kept under `single-step/`.) Cells are *share of samples ·
+ms per request* — the share times the step's measured CPU per request.
+
+| layer (self time) | REST h1 @600 (1.61 ms/req) | gRPC unary @3,000 (0.27 ms/req) | gRPC stream @5,000 (0.16 ms/msg) |
+|---|---|---|---|
+| syscalls: writev / read / epoll / futex | 28% · 0.450 | 20% · 0.054 | 24% · 0.039 |
+| Clojure runtime (maps, Vars, keywords, seqs) | 25% · 0.408 | 5% · 0.014 | 5% · 0.009 |
+| Java std (collections, strings, atomics, locks) | 15% · 0.239 | 10% · 0.028 | 10% · 0.016 |
+| Jetty | 10% · 0.168 | — | — |
+| Pedestal / Ring | 4% · 0.056 | — | — |
+| JSON (jsonista / Jackson) | 4% · 0.063 | — | — |
+| Netty | — | 21% · 0.057 | 13% · 0.021 |
+| grpc-java | — | 8% · 0.023 | 4% · 0.006 |
+| protobuf-java (descriptor-driven access) | — | 20% · 0.054 | 26% · 0.041 |
+| JIT + GC (libjvm) | 7% · 0.110 | 5% · 0.015 | 6% · 0.010 |
+| JVM dispatch stubs | 5% · 0.076 | 2% · 0.006 | 1% · 0.002 |
+| other (copy/intrinsic stubs, unresolved) | 3% · 0.042 | 7% · 0.019 | 10% · 0.016 |
+| application code | — | — | — |
+
+
+What the three columns say:
+
+- **REST's extra ~1.3 ms per request is not JSON.** Parsing and printing the
+  1.3 KB body cost 0.06 ms (4%). The cost is the request pipeline around it:
+  the Clojure runtime at 0.41 ms — persistent-map `assoc`/`valAt`, `Var`
+  and keyword lookups, lazy seqs, i.e. Pedestal's interceptor chain building
+  and reading the request and response maps — plus 0.24 ms of Java
+  collections and locks under it, 0.17 ms of Jetty, and 0.45 ms of syscalls.
+  Application code is 0.1%.
+- **Syscalls are 8× more expensive per request on REST** (0.45 vs 0.054
+  ms): HTTP/1.1 writes each response with its own `writev` on its own
+  connection (`writev` alone is 13% of REST), and Jetty's thread-pool
+  hand-off shows as `pthread_cond_signal`/futex, where Netty's event loop
+  batches frames onto one multiplexed socket with no hand-off (`:direct`).
+- **On the gRPC arms the biggest software cost is protobuf, and it is the
+  generic path.** 20–26% of samples sit in `Descriptors$FieldDescriptor.getType`,
+  `getFeatures`, `SmallSortedMap`, `FieldSet` and `CodedInputStream.readPrimitiveField`
+  beneath `clj_protobuf.codec/proto-value` and `get-field`: descriptor-driven
+  field access, not generated-class parsing. That is exactly what the typed
+  `interop=true` emitter path (protoc-gen-clojure 0.5.1) removes — the
+  clj-protobuf suite measured its encode at 412 ns vs 650 ns for this path
+  on a deep shape — so ~0.04–0.05 ms per request is on the table on both
+  gRPC arms without touching the transport.
+- **Streaming's gain over unary is visible as grpc-java shrinking** from
+  8.4% (0.023 ms) to 3.8% (0.006 ms): per-RPC setup, headers, trailers and
+  `GrpcHttp2InboundHeaders` handling amortized over a stream. Netty's share
+  drops too (0.057 → 0.021 ms) as frames batch. What is left at 0.16 ms is
+  protobuf + syscalls + copies — the message itself.
+- **JIT + GC is 5–7% everywhere** at steady state; the same arms show
+  20–50% in the compiler during the first step after a rate jump, which is
+  the outlier the tables exclude and the profiles above avoid.
+
+Logs (gzipped) and `tables.md` in `soak/results/2026-09-07-profiled/`; the
+attribution reads are reproducible with `soak/pyro.py <service> <from> <until>`
+against the arm's `<arm>-java` service in Pyroscope for the step's
+`#NH-STEP` window.
