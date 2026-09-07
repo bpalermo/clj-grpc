@@ -34,7 +34,7 @@ executor. The full doctrine across every measured regime: **VT wins only
 low-utilization unary tails; `:direct` wins high-load unary, all streaming,
 capacity, and CPU — provided handlers never block.**
 
-## [Switch ladder](results/2026-09-switch-ladder-raw.md) — September 2026, in progress
+## [Switch ladder](results/2026-09-switch-ladder-raw.md) — 2026-09-06/07
 
 **Question:** what does an existing REST service gain from each switch it
 could make — transport (HTTP/1.1 → h2c), protocol (REST/JSON → gRPC unary),
@@ -56,4 +56,14 @@ two-worker cross-check; the ladder's own tables stop at 8,000 with the arm at
 offered rate, p99 an order of magnitude lower below REST's knee, and a
 graceful plateau under the client queue that collapsed h2c. August's k6
 "knee" at ~2,140 was the driver; the server's unary capacity is 2–4× higher.
-Phase C (streams) pending the Nighthawk fork's P2.
+**Phase C (interaction model, 2026-09-07):** unary → persistent bidi streams
+buys 1.8× more on 1 KB messages (knee ~6,500, plateau ~8,200 msg/s per core,
+bounded by the `:direct` event loop at 0.87 core, never the quota) and ~3×
+on tiny (> 31,500 msg/s, arm at 0.82 core), at 15–25% less CPU per message,
+p50 ≤ 3 ms to the knee, a flat plateau under any overload with zero errors.
+**The ladder, per core on 1 KB bodies: REST h1 ~750 → h2c ~750 → gRPC unary
+~4,600 (6×) → stream ~8,200 (11×).** August's 7.5×/16× streaming ratios
+were the k6 driver under-measuring unary; on one instrument they are
+1.8×/11×. Rung 2 is where the money is; rung 1 is free and worthless;
+rung 3 is a contract change for 1.8×. Deferred: Pyroscope attribution of
+where the per-request cost goes.
