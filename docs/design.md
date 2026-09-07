@@ -28,15 +28,21 @@ server and the client consume, and the only coupling between them.
 clj-protobuf's rule — never mix descriptor pools — lands here with force: a
 marshaller's prototype decides which pool parsed requests live in, and
 handlers hand those requests straight to the generated `proto->X` fns, whose
-handles live in the *namespace's* pool. So `service` resolves method
-prototypes exactly the way the emitter's hints do: derive the Java class name
-protoc would generate (only for `java_multiple_files` or edition-2024
-top-level classes — the same subset the plugin hints), verify it describes the
-same message, fall back silently to `DynamicMessage` **over the same
-`FileDescriptor` instance the namespace uses**. Both arms align: with the
-generated classes present, everything is the generated pool; without them,
-everything is the embedded pool. The service tests pin the property; the e2e
-suite exercises it over the wire.
+handles live in the *namespace's* pool. So `service` derives the Java
+class hint exactly the way the emitter does (only for `java_multiple_files`
+or edition-2024 top-level classes — the same subset the plugin hints) and
+then makes the call the generated namespace makes:
+`clj-protobuf.runtime/message` with the hint, the message's lookup name and
+**the same `FileDescriptor` instance the namespace uses**. The runtime's
+choice — the generated class when it resolves and describes the same
+message, else its compiled codec (clj-protobuf 0.2.0), else `DynamicMessage`
+under `-Dclj-protobuf.codec=dynamic` — is therefore the marshaller's
+prototype too, so inbound parsing lands on the codec `proto->X` reads
+instead of on `DynamicMessage`'s FieldSet path beside a compiled namespace.
+Both arms align: with the generated classes present, everything is the
+generated pool; without them, everything is the embedded pool on one codec.
+The service tests pin the property on the hinted arm, the codec tests on both
+fallback arms; the e2e suite exercises all three over the wire.
 
 ## Non-shaded Netty, deliberately
 

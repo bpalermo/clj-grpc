@@ -111,7 +111,10 @@ step() {
   # eval, because mode_args carries a quoted header value.
   eval "set -- $(common "${rps}" "${seconds}") $(mode_args)"
   log "step rps=${rps} duration=${seconds}s warmup=${warmup} mode=${MODE} tier=${TIER}"
-  out="$(nighthawk_client "$@")" || log "nighthawk_client exited $? at rps=${rps} (counters tell the story; continuing)"
+  # Bounded: a client that outlives its step by two minutes is hung (the fork's
+  # startup fork deadlock, fixed in 8297b9e8, cost a 38-minute step once) and
+  # is killed so the ramp goes on; that step's JSON is simply absent.
+  out="$(timeout -s KILL $(( seconds + 120 )) nighthawk_client "$@")" || log "nighthawk_client exited $? at rps=${rps} (counters tell the story; continuing)"
   end="$(date +%s)"
   after="$(snapshot)"
   printf '#NH-STEP {"rps":%s,"warmup":%s,"start":%s,"end":%s,"metrics_before":"%s","metrics_after":"%s"}\n' \

@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
-"""Attribution from a Pyroscope flamebearer, read through the API-server proxy: soak/pyro.py <service_name> <from_epoch> <until_epoch>
+"""Attribution from a Pyroscope flamebearer, read through the API-server proxy: soak/pyro.py <service_name|flamebearer.json[.gz]> <from_epoch> <until_epoch>
 Prints thread-level shares (root frames), layer shares by self time, and top self frames."""
 import sys, json, subprocess, urllib.parse, re, collections
 svc, frm, until = sys.argv[1], sys.argv[2], sys.argv[3]
-q = urllib.parse.quote('process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name="%s"}' % svc)
-url = f"/api/v1/namespaces/o11y/services/pyroscope:4040/proxy/pyroscope/render?query={q}&from={frm}&until={until}&format=json"
-fb = json.loads(subprocess.check_output(["kubectl", "--context", "talos-main", "get", "--raw", url]))["flamebearer"]
+def load_flamebearer(svc, frm, until):
+    """Live from Pyroscope through the API-server proxy, or offline when svc is a
+    saved flamebearer file (.json or .json.gz)."""
+    import os, gzip
+    if os.path.exists(svc):
+        opener = gzip.open if svc.endswith(".gz") else open
+        with opener(svc, "rt") as f: return json.load(f)["flamebearer"]
+    q = urllib.parse.quote('process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name="%s"}' % svc)
+    url = f"/api/v1/namespaces/o11y/services/pyroscope:4040/proxy/pyroscope/render?query={q}&from={frm}&until={until}&format=json"
+    return json.loads(subprocess.check_output(["kubectl","--context","talos-main","get","--raw",url]))["flamebearer"]
+fb = load_flamebearer(svc, frm, until)
 names, levels, total = fb["names"], fb["levels"], fb["numTicks"]
 # levels[i] is a flat list of (offsetDelta, total, self, nameIdx); offsets are deltas within a level.
 LAYERS = [

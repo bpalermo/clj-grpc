@@ -22,7 +22,7 @@
 ;; wanted. Document-only add-on.
 {:paths ["src"]
  :deps {org.clojure/clojure {:mvn/version "1.12.5"}
-        com.github.bpalermo/clj-protobuf {:mvn/version "0.1.11"}
+        com.github.bpalermo/clj-protobuf {:mvn/version "0.2.0"}
 
         io.grpc/grpc-api {:mvn/version "1.83.1"}
         io.grpc/grpc-core {:mvn/version "1.83.1"}
@@ -55,13 +55,14 @@
  {;; service-test is deliberately absent from the patterns: its protoc
   ;; reference classes come from Bazel's java_proto_library, which plain clj
   ;; cannot build. Bazel runs the complete suite; the e2e suite here runs the
-  ;; hint-free (DynamicMessage) arm, which is its own coverage.
+  ;; hint-free arm (the compiled codec, clj-protobuf's default), which is its
+  ;; own coverage; service-codec-test pins that arm explicitly.
   :test {:extra-paths ["test" "test/fixtures"]
          :extra-deps {io.github.cognitect-labs/test-runner
                       {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
          :main-opts ["-m" "cognitect.test-runner"]
          :exec-fn cognitect.test-runner.api/test
-         :exec-args {:patterns ["clj-grpc\\.(e2e|lazy-netty|netty-alignment)-test"]}}
+         :exec-args {:patterns ["clj-grpc\\.(e2e|lazy-netty|netty-alignment|service-codec)-test"]}}
   ;; bazel run //bench:run — gRPC round trips vs REST+JSON on Pedestal/Jetty.
   :bench {:extra-paths ["bench" "test/fixtures"]
           :extra-deps {criterium/criterium {:mvn/version "0.4.6"}

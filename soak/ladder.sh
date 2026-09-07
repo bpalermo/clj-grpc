@@ -42,14 +42,22 @@ mkdir -p "${results_dir}"
 
 log() { echo "ladder: $(date -u +%H:%M:%S) $*" >&2; }
 
+# Extra --set pairs applied to EVERY upgrade of every run (an override that is
+# not repeated on the Job-start upgrade is silently undone by it, which is how
+# the first rest-h2c run measured an empty Service). Space-separated, e.g.
+#   LADDER_EXTRA_SET="arms.grpc-jvm.extraEnv.EXECUTOR=virtual"
+read -ra extra_set <<<"${LADDER_EXTRA_SET:-}"
+extra_flags=()
+for kv in "${extra_set[@]}"; do extra_flags+=(--set-string "${kv}"); done
+
 upgrade() { # $@ = --set key=value pairs
   if [ "${chart}" = "bazel" ]; then
-    bazel run //charts:soak.upgrade -- --namespace "${ns}" --set "profiling.enabled=${profiling}" "$@"
+    bazel run //charts:soak.upgrade -- --namespace "${ns}" --set "profiling.enabled=${profiling}" "${extra_flags[@]}" "$@"
   else
     version_flag=()
     [ -n "${chart_version}" ] && version_flag=(--version "${chart_version}")
     helm --kube-context "${context}" upgrade clj-grpc-soak "${chart}" "${version_flag[@]}" --namespace "${ns}" \
-      --set "profiling.enabled=${profiling}" --set "loadJob.warmup.seconds=${warmup_seconds}" "$@"
+      --set "profiling.enabled=${profiling}" --set "loadJob.warmup.seconds=${warmup_seconds}" "${extra_flags[@]}" "$@"
   fi
 }
 
