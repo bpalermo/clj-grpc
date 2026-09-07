@@ -19,7 +19,7 @@ set -eu
 : "${WARMUP_RPS:=200}" "${WARMUP_SECONDS:=120}" "${CONCURRENCY:=2}"
 : "${HTTP1_CONNECTIONS:=256}" "${HTTP2_CONNECTIONS:=8}"
 : "${MAX_ACTIVE_REQUESTS:=4096}" "${MAX_CONCURRENT_STREAMS:=512}"
-: "${STREAMS:=20}" "${INFLIGHT:=256}" "${STREAM_DRAIN:=500ms}"
+: "${STREAMS:=20}" "${INFLIGHT:=256}" "${STREAM_DRAIN:=0.5s}"
 
 METRICS_URL="http://${TARGET}:9090/metrics"
 BASE="http://${TARGET}:8080"
@@ -56,7 +56,10 @@ per_worker() { echo $(( $1 / CONCURRENCY )); }
 # counters (pool_overflow, grpc_error, stream_deferred) are how saturation is
 # read, not a reason to stop.
 common() {
-  echo "--open-loop --rps $(per_worker "$1") --duration $2 --concurrency ${CONCURRENCY}" \
+  local rate
+  # --grpc-stream takes the AGGREGATE rate (fork semantics); everything else per worker.
+  if [ "${MODE}" = "grpc-stream" ]; then rate="$1"; else rate="$(per_worker "$1")"; fi
+  echo "--open-loop --rps ${rate} --duration $2 --concurrency ${CONCURRENCY}" \
        "--max-pending-requests 0 --no-default-failure-predicates" \
        "--sequencer-idle-strategy ${IDLE_STRATEGY:-spin} --output-format json"
 }
@@ -90,8 +93,10 @@ mode_args() {
            "--max-active-requests $(per_worker "${MAX_ACTIVE_REQUESTS}") --max-concurrent-streams ${MAX_CONCURRENT_STREAMS}" \
            "--request-body-file /bodies/${TIER}.pb ${BASE}/acme.greeter.Greeter/SayHello" ;;
     grpc-stream)
-      # Aggregate --rps in this mode (fork semantics); undo common()'s division.
-      echo "--rps ${rps} --grpc-stream --streams ${STREAMS} --max-inflight-per-stream ${INFLIGHT}" \
+      # --rps is aggregate here and already emitted by common(); --streams is the
+      # total across workers (must be a multiple of --concurrency).
+      echo "--grpc-stream --streams ${STREAMS} --max-inflight-per-stream ${INFLIGHT}" \
+           "--max-active-requests $(per_worker "${MAX_ACTIVE_REQUESTS}")" \
            "--stream-drain-duration ${STREAM_DRAIN}" \
            "--request-body-file /bodies/${TIER}.pb ${BASE}/acme.greeter.Greeter/Chat" ;;
     *)

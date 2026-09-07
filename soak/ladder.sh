@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run the switch ladder: one Nighthawk Job per (arm, mode, tier), in sequence,
-# each against a freshly restarted arm, with the sibling REST arm scaled to
+# each against a freshly restarted arm (run spec: arm:mode:tier[:ramp[:streams]]), with the sibling REST arm scaled to
 # zero so nothing else on that node is warm. Logs land in RESULTS_DIR as
 # <runId>.log; soak/collect.sh turns each into a table.
 #
@@ -66,7 +66,7 @@ wait_ready() { # $1 = deployment
 realistic_ramp="${REALISTIC_RAMP:-100 200 300 400 500 600 800 1000 1200 1400 1600}"
 
 for run in "${runs[@]}"; do
-  IFS=: read -r arm mode tier ramp <<<"${run}"
+  IFS=: read -r arm mode tier ramp streams <<<"${run}"
   if [ -z "${ramp:-}" ] && [ "${tier}" = "realistic" ]; then ramp="${realistic_ramp}"; fi
   run_id="-$(date -u +%m%d%H%M)"
   job="nh-${arm}-${mode}-${tier}${run_id}"
@@ -91,6 +91,8 @@ for run in "${runs[@]}"; do
   # %!s(int64=-9062023), which Kubernetes refuses. Learned by the first ladder.
   ramp_set=()
   [ -n "${ramp:-}" ] && ramp_set=(--set-string "loadJob.ramp=${ramp}")
+  # Fifth field: stream count for grpc-stream runs (August's two shapes are 20 and 40).
+  [ -n "${streams:-}" ] && ramp_set+=(--set-string "loadJob.stream.streams=${streams}")
   upgrade --set loadJob.enabled=true "${pairing[@]}" \
           --set-string "loadJob.target=${arm}" --set-string "loadJob.mode=${mode}" --set-string "loadJob.tier=${tier}" \
           --set-string "loadJob.runId=${run_id}" "${ramp_set[@]}" >/dev/null

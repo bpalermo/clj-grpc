@@ -21,7 +21,7 @@ mode="${1:?usage: collect.sh MODE < job.log}"
 case "${mode}" in
   http1|http2)  latency_id="benchmark_http_client.latency_2xx";      ok_counter="benchmark.http_2xx";     knee_counter="benchmark.pool_overflow" ;;
   grpc-unary)   latency_id="benchmark_http_client.latency_grpc_ok";  ok_counter="benchmark.grpc_status.0"; knee_counter="benchmark.pool_overflow" ;;
-  grpc-stream)  latency_id="benchmark_stream.message_latency";       ok_counter="";                        knee_counter="benchmark.stream_deferred" ;;
+  grpc-stream)  latency_id="benchmark_stream.message_latency";       ok_counter="benchmark.stream_messages_received"; knee_counter="benchmark.stream_deferred" ;;
   *) echo "collect.sh: unknown mode '${mode}'" >&2; exit 2 ;;
 esac
 
@@ -57,6 +57,26 @@ while IFS= read -r line; do
             knee: ($c[$knee] // 0),
             p50: pct(0.5), p99: pct(0.99), p999: pct(0.999) }' <<<"${body}" || { echo "collect.sh: could not parse Nighthawk JSON for offered=${rps}" >&2; echo '{}'; })
       secs=$(jq -r '.secs // 0' <<<"${stats}"); ok=$(jq -r '.ok // 0' <<<"${stats}"); knee=$(jq -r '.knee // 0' <<<"${stats}")
+      # Stream-mode health and the driver-limit tell, to stderr so the table
+      # stays one row per step: every stream must close grpc-status 0 with no
+      # resets, and sends short of rps x duration while nothing was deferred
+      # mean the single spinning worker lost the schedule (client-limited),
+      # which must not be read as the server's knee.
+      if [ "${mode}" = "grpc-stream" ]; then
+        jq -r --arg rps "${rps}" '
+          (.results[] | select(.name == "global")) as $g
+          | ($g.execution_duration | sub("s$"; "") | tonumber) as $secs
+          | ($g.counters | map({(.name): (.value | tonumber)}) | add // {}) as $c
+          | ($c["benchmark.streams_opened"] // 0) as $opened
+          | ($c["benchmark.stream_grpc_status.0"] // 0) as $ok0
+          | ($c["benchmark.stream_resets"] // 0) as $resets
+          | ($c["benchmark.stream_messages_sent"] // 0) as $sent
+          | ($c["benchmark.stream_deferred"] // 0) as $deferred
+          | (($rps | tonumber) * $secs) as $scheduled
+          | (if $ok0 != $opened or $resets > 0 then "collect.sh: offered=\($rps): streams_opened=\($opened) grpc_status.0=\($ok0) resets=\($resets) — unhealthy step" else empty end),
+            (if $sent < ($scheduled * 0.99) and $deferred == 0 then "collect.sh: offered=\($rps): sent \($sent) of \($scheduled | floor) scheduled with nothing deferred — client-limited, not a server knee" else empty end)
+        ' <<<"${body}" >&2 || true
+      fi
       p50=$(jq -r '.p50 // "n/a"' <<<"${stats}"); p99=$(jq -r '.p99 // "n/a"' <<<"${stats}"); p999=$(jq -r '.p999 // "n/a"' <<<"${stats}")
       cpu_b=$(metric "${before}" cgroup_cpu_usage_seconds_total); cpu_a=$(metric "${after}" cgroup_cpu_usage_seconds_total)
       thr_b=$(metric "${before}" cgroup_cpu_throttled_seconds_total); thr_a=$(metric "${after}" cgroup_cpu_throttled_seconds_total)
