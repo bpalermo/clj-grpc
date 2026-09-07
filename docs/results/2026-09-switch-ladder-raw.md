@@ -1,8 +1,8 @@
 # Raw per-step tables — switch ladder, September 2026
 
 Backing data for the switch-ladder entry in [`../soak-results.md`](../soak-results.md);
-procedure in [`../../soak/README.md`](../../soak/README.md). **In progress** — runs
-are appended per phase as the Nighthawk fork ships each capability.
+procedure in [`../../soak/README.md`](../../soak/README.md). All three phases
+ran 2026-09-06/07; the ladder summary is at the end.
 
 ## Setup
 
@@ -28,13 +28,13 @@ connections; HTTP/2 8 connections × 512 streams, 4,096 in flight (server
 disclosed); streams 20 (S) / 40 (E), 256 in flight per stream, 500 ms drain.
 
 Versions: clj-grpc v0.1.6 (arms built from main at the run's chart, 0.2.4), Pedestal 0.8.1 / Jetty 12.0.29, grpc-java 1.83.1 /
-Netty 4.2.16.Final, Nighthawk fork `26d79815` (P0) for Phase A; `75d3b4b6` (P1) from Phase B.
+Netty 4.2.16.Final, Nighthawk fork `26d79815` (P0) for Phase A, `75d3b4b6` (P1) for Phase B, `50dce0eb` (P2) for Phase C.
 
 ## Phase A — transport: `rest-h1` (R1, R5) vs `rest-h2c` (R2, R6)
 
 Run 2026-09-06, chart 0.2.4, Nighthawk P0. Ramp 200→2400 by 200 (tiny),
 100→1600 (realistic). Arm restarts during every run: 0. Job logs (gzipped) and the
-collector's `tables.md` in `soak/results/2026-09-06-phase{A,B}/`; regenerate a table
+collector's `tables.md` in `soak/results/2026-09-06-phase{A,B}/` and `2026-09-07-phaseC/`; regenerate a table
 with `zcat <log>.gz | soak/collect.sh <mode>`.
 
 **Phase A conclusion.** Switching a Pedestal/Jetty service from HTTP/1.1 to
@@ -362,4 +362,314 @@ bound these runs.
 
 ## Phase C — interaction model: unary vs `grpc-jvm` stream (R4, R8)
 
-_pending P2 (bidi streaming); cross-checked against the Clojure driver_
+Run 2026-09-07, chart 0.2.6, Nighthawk P2 (`50dce0eb`): `--grpc-stream`
+opens N persistent bidi streams to `Greeter/Chat` before the step starts,
+schedules `--rps` messages per second in aggregate across them, and
+measures each message send→echo (`benchmark_stream.message_latency`).
+`delivered/s` is `stream_messages_received` over the step; `knee/s` is
+`stream_deferred` (sends that found the stream's 256 in-flight slots busy).
+Every stream must close `grpc-status 0` with no resets, and sends must match
+the schedule (else the step is flagged client-limited): no step below
+tripped either check. All streams multiplex on one HTTP/2 connection
+(Nighthawk's `--connections` is a cap). Same warmup, steps and arm as
+Phase B; the arm's `Chat` handler echoes the same payload the unary
+`SayHello` does.
+
+### R4 — 20 streams, tiny (`nh-grpc-jvm-grpc-stream-tiny-09071155`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.35 | 17.67 | 96.44 | 0.0 | 0.672 | 1.2 | 18 | 149 |
+| 400 | 400.0 | 1.20 | 9.01 | 32.37 | 0.0 | 0.355 | 0.4 | 21 | 151 |
+| 800 | 800.0 | 1.07 | 7.90 | 21.70 | 0.0 | 0.245 | 0.2 | 21 | 152 |
+| 1200 | 1200.0 | 1.09 | 22.41 | 56.37 | 0.0 | 0.240 | 2.5 | 18 | 155 |
+| 1600 | 1599.9 | 1.02 | 9.54 | 25.73 | 0.0 | 0.178 | 0.0 | 23 | 156 |
+| 2000 | 1999.9 | 0.98 | 12.19 | 52.42 | 0.0 | 0.162 | 0.0 | 23 | 157 |
+| 2400 | 2399.9 | 1.01 | 11.70 | 37.97 | 0.0 | 0.146 | 0.1 | 22 | 157 |
+| 3200 | 3199.9 | 0.97 | 12.56 | 29.31 | 0.0 | 0.129 | 0.0 | 22 | 157 |
+| 4000 | 3999.9 | 1.00 | 16.16 | 45.32 | 0.0 | 0.113 | 0.1 | 21 | 157 |
+| 4800 | 4799.9 | 1.05 | 23.07 | 58.16 | 0.0 | 0.103 | 0.1 | 22 | 158 |
+
+### R4b — 40 streams, tiny, 4,000→16,000 (`nh-grpc-jvm-grpc-stream-tiny-09071218`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.35 | 13.67 | 94.69 | 0.0 | 0.700 | 1.1 | 17 | 140 |
+| 4000 | 3999.7 | 1.24 | 663.72 | 893.32 | 0.0 | 0.132 | 2.0 | 18 | 153 |
+| 6000 | 5999.6 | 1.04 | 32.75 | 257.76 | 0.0 | 0.092 | 0.7 | 18 | 155 |
+| 8000 | 7999.7 | 1.05 | 56.80 | 192.27 | 0.0 | 0.071 | 0.0 | 23 | 155 |
+| 10000 | 9999.6 | 1.14 | 39.22 | 272.84 | 0.0 | 0.060 | 0.0 | 23 | 156 |
+| 12000 | 11998.7 | 1.21 | 73.13 | 181.16 | 0.0 | 0.052 | 0.0 | 16 | 156 |
+| 14000 | 13999.6 | 1.30 | 66.16 | 284.41 | 0.0 | 0.046 | 0.0 | 21 | 157 |
+| 16000 | 15998.9 | 1.44 | 190.82 | 329.32 | 0.0 | 0.041 | 0.0 | 21 | 158 |
+
+No knee: 16,000 msg/s delivered in full at p50 1.44 ms with nothing deferred
+and the arm at ~0.66 of its core (CPU per message still falling, 0.041 ms).
+The 4,000 step's p99 (664 ms) is the first-step JIT outlier seen in every
+fresh-pod run at the jump from the 200/s warmup. R4c extends the ramp to
+32,000.
+
+### R4c — 40 streams, tiny, 18,000→32,000 (`nh-grpc-jvm-grpc-stream-tiny-09071319`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.37 | 17.40 | 71.62 | 0.0 | 0.674 | 0.5 | 17 | 141 |
+| 18000 | 16592.4 | 2.09 | 1569.65 | 4424.47 | 1405.4 | 0.047 | 4.1 | 25 | 170 |
+| 20000 | 19994.6 | 1.79 | 130.88 | 360.45 | 0.0 | 0.036 | 0.0 | 25 | 170 |
+| 22000 | 21998.6 | 2.01 | 157.48 | 236.20 | 0.0 | 0.034 | 0.0 | 24 | 170 |
+| 24000 | 23998.8 | 2.28 | 149.11 | 257.61 | 0.0 | 0.031 | 0.0 | 21 | 171 |
+| 26000 | 25957.6 | 2.68 | 267.60 | 430.92 | 41.0 | 0.030 | 0.0 | 21 | 171 |
+| 28000 | 27968.9 | 2.98 | 208.89 | 401.95 | 29.6 | 0.029 | 0.1 | 25 | 171 |
+| 30000 | 29676.8 | 3.64 | 406.73 | 471.27 | 282.7 | 0.027 | 0.1 | 28 | 172 |
+| 32000 | 31558.4 | 4.25 | 449.35 | 648.28 | 439.6 | 0.026 | 0.1 | 28 | 173 |
+
+The arm is not CPU-bound anywhere in this range: CPU per message falls to
+0.026 ms (~0.82 of the core at 32,000) and throttling stays under a second.
+Delivery holds at 98.6% at 32,000 with p50 4.3 ms; the deferrals from 26,000
+up are the client's per-stream in-flight window (256) meeting the tail —
+at 800 msg/s per stream a p99 of 0.45 s means ~360 in flight, so sends wait
+on the stream, not the server. Sends kept the schedule at every step (no
+client-limited flag). Tiny-tier streaming capacity is therefore **> 30,000
+msg/s per core**, with the latency knee (p99 crossing 400 ms) at ~30,000;
+the 18,000 step is the first-step JIT outlier.
+
+
+### R8 — 20 streams, realistic (`nh-grpc-jvm-grpc-stream-realistic-09071237`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.63 | 1349.19 | 2772.30 | 0.0 | 1.019 | 8.8 | 18 | 160 |
+| 400 | 400.0 | 1.46 | 17.13 | 56.43 | 0.0 | 0.555 | 0.7 | 19 | 164 |
+| 800 | 800.0 | 1.32 | 14.17 | 47.39 | 0.0 | 0.387 | 0.2 | 19 | 164 |
+| 1200 | 1200.0 | 1.33 | 29.33 | 76.26 | 0.0 | 0.343 | 0.7 | 22 | 165 |
+| 1600 | 1599.9 | 1.35 | 21.66 | 54.28 | 0.0 | 0.299 | 0.0 | 23 | 166 |
+| 2000 | 1999.9 | 1.44 | 232.28 | 442.30 | 0.0 | 0.282 | 0.9 | 24 | 169 |
+| 2400 | 2399.9 | 1.54 | 81.74 | 252.56 | 0.0 | 0.253 | 0.1 | 21 | 169 |
+| 3200 | 3199.5 | 2.10 | 334.94 | 429.70 | 0.0 | 0.213 | 0.7 | 21 | 170 |
+| 4000 | 3999.8 | 2.30 | 222.55 | 362.56 | 0.0 | 0.184 | 0.4 | 24 | 171 |
+| 4800 | 4797.8 | 2.91 | 297.07 | 766.67 | 1.5 | 0.162 | 0.4 | 24 | 172 |
+
+Delivered in full to 4,800 msg/s (1.5/s deferred at the top) with the arm at
+~0.78 of its core. p50 stays under 3 ms; the p99 band from 2,000 up
+(200–330 ms) is wider than tiny's at the same rates and, with throttling
+under a second per step, reads as per-stream buffering of 1 KB messages
+behind HTTP/2 flow control rather than CPU. R8b looks for the knee.
+
+
+### R8b — 40 streams, realistic, 4,000→16,000 (`nh-grpc-jvm-grpc-stream-realistic-09071341`)
+
+A first R8b (`…-09071300`) was voided: a peer session ran three 30 s Jobs
+against the arm during its 10,000–16,000 steps. This is the redo; its
+uncontaminated steps reproduce the voided run's shape (8,000 → 7,766
+delivered there, 7,850 here).
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.63 | 1562.84 | 3231.84 | 0.0 | 1.012 | 3.4 | 17 | 155 |
+| 4000 | 3893.5 | 3.11 | 5532.81 | 8384.94 | 106.2 | 0.203 | 4.3 | 21 | 173 |
+| 6000 | 5997.3 | 6.51 | 275.01 | 817.66 | 0.0 | 0.138 | 0.3 | 22 | 176 |
+| 8000 | 7849.5 | 93.72 | 1518.67 | 5462.03 | 148.9 | 0.112 | 0.5 | 18 | 181 |
+| 10000 | 8173.3 | 118.31 | 4741.40 | 18112.05 | 1797.4 | 0.108 | 0.1 | 20 | 177 |
+| 12000 | 8139.8 | 273.27 | 4612.69 | 26017.27 | 3766.7 | 0.108 | 0.1 | 20 | 188 |
+| 14000 | 8191.3 | 360.27 | 3172.20 | 24009.24 | 5716.4 | 0.107 | 0.4 | 19 | 189 |
+| 16000 | 8159.2 | 162.23 | 3487.30 | 21592.28 | 7751.7 | 0.107 | 0.3 | 24 | 192 |
+
+The realistic streaming knee: 6,000 delivers in full at p50 6.5 ms; 8,000
+delivers 7,850 with p50 94 ms and the first deferrals; from 10,000 up the
+arm holds a flat **~8,150–8,200 msg/s plateau** whatever is offered. It is not
+the cgroup quota — CPU per message sits at 0.107 ms, ~0.87 of the core, and
+throttling stays under a second — it is the single event-loop thread the
+`:direct` executor runs everything on, decoding and re-encoding a 1 KB
+message per echo. `stream_write_blocked` (Envoy's connection write buffer at
+its high watermark) climbs from 16,040 events at 12,000 to saturation at
+16,000: the backpressure is at the connection, which is where a streaming
+server should push it.
+
+The collector flags the 12,000–16,000 steps unhealthy (streams closed without
+a `grpc-status`: 0, 27, 32 of 40). The Job log explains it — "13 gRPC
+stream(s) still open after the 500 ms drain window": with thousands of
+messages queued per stream the client's half-close-and-drain gives up before
+the echoes arrive, and the stream ends without a status. A harness artifact
+of overload (a longer `--stream-drain-duration` would clear it), not a server
+fault: sent and received differ by the in-flight tail only (903,760 vs
+899,481 at 12,000) and `stream_resets` is 0 throughout. The 4,000 step is the
+first-step JIT outlier.
+
+### Phase C — what the interaction-model switch buys (`grpc-jvm` unary → stream)
+
+Same arm, same core, same payload echoed per message, same client budget
+(4,096 in flight; streams add a 256 in-flight cap per stream). The switch
+replaces one HTTP/2 stream per request with N persistent bidi streams and a
+message per request. Unary numbers from Phase B; streaming from the runs
+above; "at matched rate" pairs steps at the same offered rate.
+
+| | unary | stream (20 / 40 streams) | switch buys |
+|---|---|---|---|
+| **tiny** knee / plateau (per s) | ~10,500 / ~10,700 | latency knee ~30,000 / > 31,500, arm at 0.82 core | ~3× |
+| tiny CPU per message at 4,800 / 8,000 | 0.138 / 0.095 ms | 0.103 / 0.071 ms | 25% cheaper |
+| tiny p50 / p99 at 4,800 (ms) | 2.21 / 80.7 | 1.05 / 23.1 | |
+| tiny p50 / p99 at 16,000 (ms) | — (past knee) | 1.44 / 191 | |
+| **realistic** knee / plateau (per s) | 4,000 / ~4,600 | ~6,500 / ~8,200 | 1.8× |
+| realistic CPU per message at 4,000 | 0.216 ms | 0.184 ms | 15% cheaper |
+| realistic p50 / p99 at 4,000 (ms) | 10.4 / 782 | 2.30 / 223 | |
+| realistic p50 / p99 at 2,400 (ms) | 4.14 / 2,635 (JIT outlier) → 3.28 / 219 at 2,800 | 1.54 / 81.7 | |
+| RSS at plateau (MB) | ~195 | ~175–190 | |
+
+- **Streaming is worth 1.8× more capacity on 1 KB messages and ~3× on tiny
+  ones**, on top of unary gRPC, at 15–25% less CPU per message and with
+  p50 at or under 3 ms all the way to the knee. The gain is the per-request
+  overhead unary cannot amortize — stream setup, headers, trailers, the
+  per-RPC bookkeeping in grpc-java — which is a fixed cost that matters more
+  the smaller the message: 26 µs per tiny message at 32,000/s versus 107 µs
+  per 1 KB message at the realistic plateau.
+- **The realistic ceiling is the event loop, not the quota.** At ~8,200 msg/s
+  the `:direct` arm runs its one event-loop thread at ~0.87 core with the
+  cgroup never throttling. That is the cost of `:direct` (no executor
+  hand-off, so no parallelism either) on a 1-CPU pod; on a pod with N cores
+  and N event loops it is N× this number, which unary — bound by per-request
+  work spread across the same loops — would also scale.
+- **August's ratios, corrected on one instrument.** August put streaming at
+  7.5× unary gRPC and 16× REST; measured with the same Nighthawk on both
+  sides it is 1.8× unary and **11× REST** on the realistic body (~3× and
+  > 32× on tiny). The difference is entirely August's under-measurement of
+  unary gRPC by the k6 driver. Streaming's absolute numbers (August 15–16k
+  tiny at 40 streams) were driver-bound too: it is > 30,000.
+- **Overload behaviour is the best of the ladder**: a flat plateau at any
+  offered rate, zero errors, zero resets, backpressure at the connection.
+  The only casualty is the harness's own drain window.
+
+Disclosures: all streams on one HTTP/2 connection (Nighthawk's
+`--connections` is a cap); 256 in flight per stream, which shapes the
+deferrals from 26,000 up on tiny (tail × per-stream rate); the 0.5 s drain
+leaves streams unclosed past the realistic knee, flagged in the tables; the
+Clojure `stream_driver` cross-check (`streamCheck`) was not run — the fork's
+own P2 acceptance against this arm (30 s steps, 2 workers) is the
+independent cross-check and agrees at every shared rate (16,000 at p50
+1.85 ms there, 1.44 ms here).
+
+## The ladder — what is on the table for an existing REST service
+
+Per core, 1-CPU pods, one instrument, each rung differing from the one
+below in exactly one thing. "Capacity" is the plateau of delivered
+requests or messages per second; "cost" is the arm's CPU per request at
+600 offered (realistic) / 800 (tiny), where every arm is below its knee.
+
+| rung | switch | realistic (1.3 KB JSON / 1 KB pb) capacity | cost at 600 | p99 at 600 | tiny capacity | migration cost |
+|---|---|---|---|---|---|---|
+| 0 | REST HTTP/1.1 (today) | ~750 rps | 1.59 ms | 134 ms | ~925 | — |
+| 1 | → h2c | ~750 (collapses under overload) | 1.65 ms | 108 ms | ~925 | a config flag on the server; clients must speak h2c |
+| 2 | → gRPC unary | ~4,600 (6×) | 0.56 ms | 13.7 ms | ~10,700 (11×) | new clients, protobuf schema, serialization; API shape unchanged |
+| 3 | → gRPC stream | ~8,200 (11×) | ~0.4 ms\* | ~15 ms\* | > 31,500 (> 34×) | API contract changes: persistent connections, message ordering, backpressure |
+
+\* streaming at 600 msg/s is below any measured step (400: 0.555 ms, 800:
+0.387 ms, p99 17 / 14 ms); interpolated.
+
+The money is on rung 2. Rung 1 buys nothing and costs a little; rung 3 buys
+1.8× more on top of rung 2 (3× on tiny) at the price of a different API
+contract. For a service at REST's knee today, moving to gRPC unary frees
+~85% of its cores at the same load; streaming frees ~90%. What is not on the
+table anywhere in the ladder: the JIT warmup of a fresh 1-CPU JVM pod
+(minutes, every arm) and the first-step outliers it leaves, which are a
+deployment concern (warm before serving) rather than a protocol one.
+
+Where the 1.59 → 0.56 ms goes is the next section.
+
+## Profiled repeats — where the per-request cost goes
+
+Pyroscope's Java agent (async-profiler 2.9.1, `itimer` at 100 Hz, in-process
+so kernel frames appear as their libc entry points) on the JVM arms, chart
+0.2.6 with `profiling.enabled=true`. Two questions: does the agent change
+the numbers, and what is each arm doing per request.
+
+### Agent overhead — R3 repeated with the agent on (`nh-grpc-jvm-grpc-unary-tiny-09071406`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.66 | 1625.03 | 2046.23 | 0.0 | 1.172 | 4.2 | 21 | 159 |
+| 400 | 400.0 | 1.45 | 11.67 | 33.99 | 0.0 | 0.537 | 0.1 | 24 | 159 |
+| 800 | 800.0 | 1.44 | 10.83 | 28.26 | 0.0 | 0.383 | 0.0 | 24 | 160 |
+| 1200 | 1200.0 | 1.39 | 16.78 | 157.72 | 0.0 | 0.331 | 0.0 | 20 | 160 |
+| 1600 | 1599.9 | 1.40 | 15.46 | 71.22 | 0.0 | 0.298 | 0.0 | 22 | 160 |
+| 2000 | 2000.0 | 1.50 | 32.18 | 80.25 | 0.0 | 0.270 | 0.6 | 23 | 162 |
+| 2400 | 2399.9 | 1.57 | 43.12 | 235.78 | 0.1 | 0.241 | 0.3 | 19 | 162 |
+| 2800 | 2799.9 | 1.77 | 71.98 | 180.98 | 0.1 | 0.214 | 0.0 | 25 | 164 |
+| 3200 | 3199.9 | 1.78 | 86.88 | 200.47 | 0.1 | 0.195 | 0.0 | 25 | 166 |
+| 3600 | 3599.8 | 1.86 | 69.97 | 180.81 | 0.1 | 0.181 | 0.0 | 21 | 170 |
+| 4000 | 3995.2 | 1.99 | 83.80 | 273.97 | 4.7 | 0.166 | 0.1 | 22 | 172 |
+| 4400 | 4399.7 | 2.07 | 49.24 | 124.40 | 0.1 | 0.153 | 0.0 | 21 | 172 |
+| 4800 | 4799.7 | 2.23 | 72.66 | 257.36 | 0.2 | 0.144 | 0.0 | 23 | 173 |
+
+Against the unprofiled R3 (Phase B): delivered identical at every step,
+p50 within 0.1 ms, CPU per request +1–6% (0.507 → 0.537 ms at 400,
+0.138 → 0.144 at 4,800; median +3%), p99 inside run-to-run noise (better at
+five steps, worse at seven). The REST arm's ramped repeat (below) costs 1.3%
+more CPU per request at 600 than its unprofiled run. The agent is cheap
+enough that shares can be read; absolute costs below are the profiled
+run's own `cpu ms/req`, so they carry the agent's few percent.
+
+### Attribution at matched moderate load
+
+One ramped run per arm, the last step read: REST h1 at 600 rps
+(`nh-rest-h1-http1-realistic-09071619`), gRPC unary at 3,000
+(`nh-grpc-jvm-grpc-unary-realistic-09071632`), gRPC stream at 5,000 msg/s over
+40 streams (`nh-grpc-jvm-grpc-stream-realistic-09071644`), all on the 1 KB
+body and all at ~0.75–0.8 of the arm's knee. (A first attempt with a
+single step straight after the 200 rps warmup was discarded: it profiled
+the first-step JIT outlier — 23% of unary's samples in the C2 compiler and
+GC, delivered down 15% — the same artifact every fresh-pod run shows.
+Its logs are kept under `single-step/`.) Cells are *share of samples ·
+ms per request* — the share times the step's measured CPU per request.
+
+| layer (self time) | REST h1 @600 (1.61 ms/req) | gRPC unary @3,000 (0.27 ms/req) | gRPC stream @5,000 (0.16 ms/msg) |
+|---|---|---|---|
+| syscalls: writev / read / epoll / futex | 28% · 0.450 | 20% · 0.054 | 24% · 0.039 |
+| Clojure runtime (maps, Vars, keywords, seqs) | 25% · 0.408 | 5% · 0.014 | 5% · 0.009 |
+| Java std (collections, strings, atomics, locks) | 15% · 0.239 | 10% · 0.028 | 10% · 0.016 |
+| Jetty | 10% · 0.168 | — | — |
+| Pedestal / Ring | 4% · 0.056 | — | — |
+| JSON (jsonista / Jackson) | 4% · 0.063 | — | — |
+| Netty | — | 21% · 0.057 | 13% · 0.021 |
+| grpc-java | — | 8% · 0.023 | 4% · 0.006 |
+| protobuf-java (descriptor-driven access) | — | 20% · 0.054 | 26% · 0.041 |
+| JIT + GC (libjvm) | 7% · 0.110 | 5% · 0.015 | 6% · 0.010 |
+| JVM dispatch stubs | 5% · 0.076 | 2% · 0.006 | 1% · 0.002 |
+| other (copy/intrinsic stubs, unresolved) | 3% · 0.042 | 7% · 0.019 | 10% · 0.016 |
+| application code | — | — | — |
+
+
+What the three columns say:
+
+- **REST's extra ~1.3 ms per request is not JSON.** Parsing and printing the
+  1.3 KB body cost 0.06 ms (4%). The cost is the request pipeline around it:
+  the Clojure runtime at 0.41 ms — persistent-map `assoc`/`valAt`, `Var`
+  and keyword lookups, lazy seqs, i.e. Pedestal's interceptor chain building
+  and reading the request and response maps — plus 0.24 ms of Java
+  collections and locks under it, 0.17 ms of Jetty, and 0.45 ms of syscalls.
+  Application code is 0.1%.
+- **Syscalls are 8× more expensive per request on REST** (0.45 vs 0.054
+  ms): HTTP/1.1 writes each response with its own `writev` on its own
+  connection (`writev` alone is 13% of REST), and Jetty's thread-pool
+  hand-off shows as `pthread_cond_signal`/futex, where Netty's event loop
+  batches frames onto one multiplexed socket with no hand-off (`:direct`).
+- **On the gRPC arms the biggest software cost is protobuf, and it is the
+  generic path.** 20–26% of samples sit in `Descriptors$FieldDescriptor.getType`,
+  `getFeatures`, `SmallSortedMap`, `FieldSet` and `CodedInputStream.readPrimitiveField`
+  beneath `clj_protobuf.codec/proto-value` and `get-field`: descriptor-driven
+  field access, not generated-class parsing. That is exactly what the typed
+  `interop=true` emitter path (protoc-gen-clojure 0.5.1) removes — the
+  clj-protobuf suite measured its encode at 412 ns vs 650 ns for this path
+  on a deep shape — so ~0.04–0.05 ms per request is on the table on both
+  gRPC arms without touching the transport.
+- **Streaming's gain over unary is visible as grpc-java shrinking** from
+  8.4% (0.023 ms) to 3.8% (0.006 ms): per-RPC setup, headers, trailers and
+  `GrpcHttp2InboundHeaders` handling amortized over a stream. Netty's share
+  drops too (0.057 → 0.021 ms) as frames batch. What is left at 0.16 ms is
+  protobuf + syscalls + copies — the message itself.
+- **JIT + GC is 5–7% everywhere** at steady state; the same arms show
+  20–50% in the compiler during the first step after a rate jump, which is
+  the outlier the tables exclude and the profiles above avoid.
+
+Logs (gzipped) and `tables.md` in `soak/results/2026-09-07-profiled/`; the
+attribution reads are reproducible with `soak/pyro.py <service> <from> <until>`
+against the arm's `<arm>-java` service in Pyroscope for the step's
+`#NH-STEP` window.
