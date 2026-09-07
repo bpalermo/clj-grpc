@@ -225,8 +225,8 @@ and CPU per request kept falling with rate (0.51 ms at 400 → 0.14 ms at
 4,800: the event loop's fixed cost amortizing), so at 4,800 rps the arm was
 using about two-thirds of its core. August's "~2,140 rps knee" for this arm
 was the closed-loop k6 driver, not the server. A follow-up run extends the
-ramp to 8,000 to find the real one; the 1-worker Nighthawk driver may cap
-first, which will show as `knee/s` growing with a flat arm CPU.
+ramp to 8,000 (R3b), and a two-worker cross-check by the fork session
+places the knee at ~10,000–11,000.
 
 ### R7 — `grpc-jvm` unary, realistic (`nh-grpc-jvm-grpc-unary-realistic-09070010`)
 
@@ -267,18 +267,29 @@ delivered cleanly at lower cost. A follow-up run extends the ramp to 5,200.
 | 7600 | 7599.1 | 3.43 | 125.52 | 235.95 | 0.7 | 0.099 | 0.2 | 36 | 170 |
 | 8000 | 7976.6 | 3.80 | 122.42 | 272.88 | 23.2 | 0.095 | 0.2 | 41 | 170 |
 
-Still no knee on the arm: CPU per request keeps falling to 0.095 ms, so at
-8,000 rps the server uses ~0.76 of its core and throttling stays under a
-second per step. What moves here is the driver. `knee/s` (sends that found
-all 4,096 slots busy) is sporadic rather than climbing, and the p99 spikes at
-5,200 / 6,400 / 7,200 come and go without a matching change on the arm — the
-signature of one spinning Nighthawk worker on a 1-CPU quota losing its
-schedule, not of the server queueing. Nighthawk opened 4 connections for the
-run, not the 8 configured. The tiny tier's capacity is therefore a lower
-bound, **> 8,000 rps per core**, which is where a single-worker driver on
-this cluster stops being able to look. (A 2-worker driver does not schedule
-on worker-05 next to `pyroscope-0`; running it elsewhere would put the driver
-on an arm's node.)
+Still no knee on the arm at 8,000: CPU per request keeps falling to
+0.095 ms, so the server uses ~0.76 of its core and throttling stays under a
+second per step. The p99 spikes at 5,200 / 6,400 / 7,200 come and go without
+a matching change on the arm. Nighthawk opened 4 connections for the run,
+not the 8 configured: for HTTP/2 `--connections` is a cap, and the pool
+adds connections only as stream demand requires (fork session's reading).
+
+**Cross-check with a two-worker driver** (the fork session, same P1 image,
+concurrency 2, 2,048 in flight per worker, 30 s steps, no cgroup counters):
+
+| offered | delivered/s | `grpc_ok` | `pool_overflow` | p50 | p99 |
+|---|---|---|---|---|---|
+| 8,000 | 7,997 | 239,916 | 20 | 6.6 ms | 131 ms |
+| 12,000 | 10,704 | 321,132 | 36,531 (10%) | 150 ms | 634 ms |
+| 16,000 | 9,642 | 289,249 | 187,450 (44%) | 366 ms | 714 ms |
+
+Two workers deliver the same 8,000 as one, so the single spinning worker was
+not the limit there; both sequencers kept 100% of their schedule at 12k and
+16k, so the shortfall past 8,000 is in-flight overflow waiting on the arm.
+**Tiny-tier knee: ~10,000–11,000 rps per core**, with delivered throughput
+falling past it (9.6k at 16k offered) — the same shape as the realistic
+tier at 5,200. The authoritative per-step CPU numbers stop at 8,000 (this
+run); the knee position is the cross-check's.
 
 ### R7b — `grpc-jvm` unary, realistic, 3,600→5,200 (`nh-grpc-jvm-grpc-unary-realistic-09070100`)
 
@@ -309,7 +320,7 @@ existing services run and h2c is the rung just below:
 
 | | rest-h1 | rest-h2c | grpc-jvm unary | switch buys |
 |---|---|---|---|---|
-| **tiny** plateau, delivered/s | ~925 | ~925 | **> 8,000** (driver-bound; arm at 0.76 core) | > 8.6× |
+| **tiny** knee / plateau, delivered/s | 1,000 / ~925 | 1,000 / ~925 | **~10,500** / ~10,700 (2-worker cross-check) | ~11× |
 | tiny CPU/req at 800 offered | 1.26 ms | 1.24 ms | 0.38 ms | 3.3× cheaper |
 | tiny p50 / p99 at 800 (ms) | 8.9 / 171 | 16.8 / 123 | 1.4 / 11 | |
 | tiny p50 / p99 at 400 (ms) | 2.45 / 21.7 | 2.81 / 28.1 | 1.44 / 9.6 | |
@@ -323,7 +334,7 @@ existing services run and h2c is the rung just below:
 Three things the numbers say:
 
 - **This rung is where the gain is.** Per core, the protocol switch is worth
-  6× capacity on a 1 KB body and more than 8× on a tiny one, with CPU per
+  6× capacity on a 1 KB body and ~11× on a tiny one, with CPU per
   request 3× lower at the same offered rate and p99 an order of magnitude
   lower below REST's knee. h1 → h2c was worth nothing; h2c → gRPC is worth
   everything the August comparison attributed to "gRPC", and more, now that
@@ -336,13 +347,14 @@ Three things the numbers say:
   them in the socket buffers, Jetty's thread pool pulls them in.
 - **August under-measured gRPC by 2–4×.** The k6 closed-loop "knee" at
   ~2,140 rps was the driver. The server's real unary capacity per core is
-  ~4,600 rps on realistic bodies and beyond 8,000 on tiny ones, which also
+  ~4,600 rps on realistic bodies and ~10,500 on tiny ones, which also
   moves the August streaming-vs-unary ratio (7.5×) down toward 2–3× before
   Phase C measures it directly.
 
 Disclosures: CPU per request is the arm's cgroup delta over delivered
 responses, so it includes the kernel's share of the arm's socket work; the
-tiny-tier ceiling is the driver's, not the arm's; per-step JIT outliers
+tiny-tier knee comes from the fork session's two-worker cross-check (30 s
+steps, no cgroup counters), the ladder's own tables stop at 8,000; per-step JIT outliers
 (R7 2,400, R7b 3,600) are visible in the tables and excluded from the
 readings; grpc-netty has no per-connection stream cap where Jetty has
 `H2C_MAX_STREAMS=1024` — with 8 connections × 512 client streams neither cap
