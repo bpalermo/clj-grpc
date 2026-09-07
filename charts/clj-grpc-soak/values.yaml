@@ -129,7 +129,7 @@ loadJob:
   stream:
     streams: "20"
     inflight: "256"
-    drain: 500ms
+    drain: 0.5s  # protobuf Duration spelling; the fork rejects "500ms"
   # Appended to the Job name so two runs never collide; set per invocation.
   runId: ""
 
