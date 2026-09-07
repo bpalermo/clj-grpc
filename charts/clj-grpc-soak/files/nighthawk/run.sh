@@ -47,7 +47,7 @@ snapshot() {
 # (its log says so: "Global targets: 800 calls per second (Per-worker
 # targets: 400)"), and --concurrency is the worker count. Every rate and
 # budget in this file is the AGGREGATE the values.yaml states; this is where
-# it is divided. The one exception is --grpc-stream, whose --rps the fork
+# it is divided. The one exception is --grpc-mode bidi-stream, whose --rps the fork
 # defines as aggregate — streams are divided across workers there instead.
 per_worker() { echo $(( $1 / CONCURRENCY )); }
 
@@ -57,7 +57,7 @@ per_worker() { echo $(( $1 / CONCURRENCY )); }
 # read, not a reason to stop.
 common() {
   local rate
-  # --grpc-stream takes the AGGREGATE rate (fork semantics); everything else per worker.
+  # --grpc-mode bidi-stream takes the AGGREGATE rate (fork semantics); everything else per worker.
   if [ "${MODE}" = "grpc-stream" ]; then rate="$1"; else rate="$(per_worker "$1")"; fi
   echo "--open-loop --rps ${rate} --duration $2 --concurrency ${CONCURRENCY}" \
        "--max-pending-requests 0 --no-default-failure-predicates" \
@@ -89,13 +89,13 @@ mode_args() {
            "--max-active-requests $(per_worker "${MAX_ACTIVE_REQUESTS}") --max-concurrent-streams ${MAX_CONCURRENT_STREAMS}" \
            "--request-method POST $(rest_body) ${BASE}/hello" ;;
     grpc-unary)
-      echo "--grpc --connections $(per_worker "${HTTP2_CONNECTIONS}")" \
+      echo "--grpc-mode unary --connections $(per_worker "${HTTP2_CONNECTIONS}")" \
            "--max-active-requests $(per_worker "${MAX_ACTIVE_REQUESTS}") --max-concurrent-streams ${MAX_CONCURRENT_STREAMS}" \
            "--request-body-file /bodies/${TIER}.pb ${BASE}/acme.greeter.Greeter/SayHello" ;;
     grpc-stream)
       # --rps is aggregate here and already emitted by common(); --streams is the
       # total across workers (must be a multiple of --concurrency).
-      echo "--grpc-stream --streams ${STREAMS} --max-inflight-per-stream ${INFLIGHT}" \
+      echo "--grpc-mode bidi-stream --streams ${STREAMS} --max-inflight-per-stream ${INFLIGHT}" \
            "--max-active-requests $(per_worker "${MAX_ACTIVE_REQUESTS}")" \
            "--stream-drain-duration ${STREAM_DRAIN}" \
            "--request-body-file /bodies/${TIER}.pb ${BASE}/acme.greeter.Greeter/Chat" ;;
@@ -112,7 +112,7 @@ step() {
   eval "set -- $(common "${rps}" "${seconds}") $(mode_args)"
   log "step rps=${rps} duration=${seconds}s warmup=${warmup} mode=${MODE} tier=${TIER}"
   # Bounded: a client that outlives its step by two minutes is hung (the fork's
-  # startup fork deadlock, fixed in 8297b9e8, cost a 38-minute step once) and
+  # startup fork deadlock, fixed in 8297b9e8 and carried by bc9de452, cost a 38-minute step once) and
   # is killed so the ramp goes on; that step's JSON is simply absent.
   out="$(timeout -s KILL $(( seconds + 120 )) nighthawk_client "$@")" || log "nighthawk_client exited $? at rps=${rps} (counters tell the story; continuing)"
   end="$(date +%s)"

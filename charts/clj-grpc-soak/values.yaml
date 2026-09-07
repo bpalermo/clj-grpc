@@ -87,7 +87,7 @@ loadJob:
   enabled: false
   # P0 image (arm64+amd64, curl, ENTRYPOINT nighthawk_client). :latest is not
   # tagged on the fork yet; pin the sha per campaign.
-  image: ghcr.io/bpalermo/nighthawk:8297b9e870e7a7f675aa4dbca3760190d8c470d4
+  image: ghcr.io/bpalermo/nighthawk:bc9de452fa39efd6d4ddd00c0b545cde275eddae
   target: rest-h1              # arm name == Service DNS name
   mode: http1                  # http1 | http2 | grpc-unary | grpc-stream
   tier: tiny                   # tiny | realistic → /bodies/<tier>.{json,pb}
