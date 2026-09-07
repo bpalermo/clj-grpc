@@ -67,10 +67,10 @@
       ]
     },
     {
-      "coordinates": "com.github.bpalermo/clj-protobuf:0.2.0",
+      "coordinates": "com.github.bpalermo/clj-protobuf:0.2.1",
       "target": "com_github_bpalermo_clj_protobuf",
-      "path": "com/github/bpalermo/clj-protobuf/0.2.0/clj-protobuf-0.2.0.jar",
-      "sha256": "e7de2406af7958c5944b35451470558342e5532b9c3d743f44d95ebb7cbca02f",
+      "path": "com/github/bpalermo/clj-protobuf/0.2.1/clj-protobuf-0.2.1.jar",
+      "sha256": "376c40209d82122194420b78cf1ec6ecb32d7879d97d97ce55c67c69ed112a6b",
       "deps": [
         "com_google_protobuf_protobuf_java"
       ]

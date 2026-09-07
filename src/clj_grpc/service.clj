@@ -15,20 +15,16 @@
   live in the same descriptor pool — and on the same codec — as the generated
   namespace's message prototypes, or the generated proto->X fns crash on
   parsed messages (protobuf-java forbids cross-pool field access). So the
-  service does not choose a prototype itself: it derives the Java class hint
-  by the same rules the emitter hints with (only for java_multiple_files or
-  edition-2024+ top-level classes — the same subset the plugin hints) and
-  hands it, with the SAME FileDescriptor instance the namespace registered,
-  to clj-protobuf.runtime/message — the exact call the generated namespace
-  makes. Whatever arm the runtime picks (the generated class, its compiled
-  codec, or DynamicMessage under -Dclj-protobuf.codec=dynamic) is then the
-  arm on both sides of the wire; being wrong costs the optimisation, never
-  correctness."
+  service chooses nothing: it hands each method's request and response
+  Descriptor — the instance the namespace's own FileDescriptor owns — to
+  clj-protobuf.runtime/prototype, which derives the Java class hint by the
+  emitter's own rule and picks the arm rt/message gave the namespace for
+  that message: the generated class, its compiled codec, or DynamicMessage
+  under -Dclj-protobuf.codec=dynamic. One rule, in one place, on both sides
+  of the wire; being wrong costs the optimisation, never correctness."
   (:require [clj-protobuf.runtime :as rt]
             [clojure.string :as string])
   (:import [com.google.protobuf
-            DescriptorProtos$FileDescriptorProto
-            Descriptors$Descriptor
             Descriptors$FileDescriptor
             Descriptors$MethodDescriptor
             Descriptors$ServiceDescriptor
@@ -39,53 +35,19 @@
 (set! *warn-on-reflection* true)
 
 ;; ---------------------------------------------------------------------------
-;; Prototype resolution (the hint, by the emitter's rules; the choice, by the runtime)
-
-(def ^:private edition-2024-number
-  (.getNumber com.google.protobuf.DescriptorProtos$Edition/EDITION_2024))
-
-(defn- top-level-java-classes?
-  [^DescriptorProtos$FileDescriptorProto fdp]
-  (or (.getJavaMultipleFiles (.getOptions fdp))
-      (and (= "editions" (.getSyntax fdp))
-           (>= (.getNumber (.getEdition fdp)) edition-2024-number))))
-
-(defn- name-path
-  "The message's names from the top-level type down: [\"Outer\" \"Inner\"]."
-  [^Descriptors$Descriptor desc]
-  (loop [d desc, segs ()]
-    (if d
-      (recur (.getContainingType d) (cons (.getName d) segs))
-      segs)))
-
-(defn- java-class-hint
-  "The Java class protoc would generate for this message, by the same rules the
-  emitter hints with: derived only when classes are top-level
-  (java_multiple_files, or edition 2024+ where nest_in_file_class defaults NO);
-  nested messages join with $. nil when underivable — pre-2024 file-class
-  nesting rules are deliberately not reimplemented, same as the emitter."
-  [^Descriptors$Descriptor desc]
-  (let [file (.getFile desc)
-        fdp  (.toProto file)]
-    (when (top-level-java-classes? fdp)
-      (let [pkg (let [jp (.getJavaPackage (.getOptions fdp))]
-                  (if (string/blank? jp) (.getPackage fdp) jp))]
-        (str pkg (when-not (string/blank? pkg) ".")
-             (string/join "$" (name-path desc)))))))
+;; Prototypes: the runtime's choice, not ours
 
 (defn- prototype
-  "The marshaller prototype for a Descriptor: exactly what the generated
-  namespace's own rt/message call yields for the same message. Delegating
-  rather than re-deriving is what keeps inbound parsing on the codec the
-  proto->X fns read — with clj-protobuf's compiled codec, a locally built
-  DynamicMessage would parse requests onto the FieldSet path while the
-  namespace's own prototypes lived on the compiled one. The FileDescriptor
-  passed is the descriptor's own, the instance the namespace registered, and
-  the dotted lookup resolves back to this same Descriptor: same pool."
-  ^Message [^Descriptors$Descriptor desc]
-  (rt/message (.getFile desc)
-              (string/join "." (name-path desc))
-              (java-class-hint desc)))
+  "The marshaller prototype for a method's request or response type: exactly
+  what the generated namespace's own rt/message call yielded for the same
+  message, so a request the marshaller parses is one the proto->X fns read.
+  clj-grpc used to derive the class hint and build the fallback itself; with
+  clj-protobuf's compiled codec that put inbound parsing on DynamicMessage's
+  FieldSet path beside a compiled namespace, and its copy of the hint rule
+  could drift (it did: nest_in_file_class = YES). rt/prototype (0.2.1) owns
+  both. Same pool by construction: the Descriptor is the file's own."
+  ^Message [desc]
+  (rt/prototype desc))
 
 ;; ---------------------------------------------------------------------------
 ;; The service value
