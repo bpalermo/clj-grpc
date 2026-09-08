@@ -42,6 +42,7 @@ helm_chart(
     chart = "clj-grpc-soak/Chart.yaml",
     files = glob(["clj-grpc-soak/files/**"]) + [":bodies"],
     images = [
+        "//bazel/images:grpc_jvm_interop_push",
         "//bazel/images:grpc_jvm_push",
         "//bazel/images:grpc_native_push",
         "//bazel/images:rest_push",

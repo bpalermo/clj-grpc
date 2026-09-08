@@ -126,6 +126,50 @@ image_push(
 )
 
 # --------------------------------------------------------------------------
+# gRPC JVM, typed-interop arm: the identical server built against the
+# `interop=true` generated fixture. Same base, same heap, same agent layer and
+# the same leak-detection setting as grpc_jvm_image, so the only difference
+# between the two arms on a cluster is which generated code encodes.
+
+image_layer(
+    name = "grpc_jvm_interop_layer",
+    srcs = {"/app.jar": "//bench:coldstart_server_interop_deploy.jar"},
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+image_manifest(
+    name = "grpc_jvm_interop_image",
+    base = "@distroless_java21",
+    cmd = [],
+    entrypoint = [
+        "/usr/bin/java",
+        "-Xmx512m",
+        "-Dio.netty.leakDetection.level=disabled",
+        "-jar",
+        "/app.jar",
+    ],
+    layers = [
+        ":pyroscope_agent_layer",
+        ":grpc_jvm_interop_layer",
+    ],
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+image_push(
+    name = "grpc_jvm_interop_push",
+    image = ":grpc_jvm_interop_image",
+    registry = "ghcr.io",
+    repository = "bpalermo/clj-grpc/soak-grpc-jvm-interop",
+    stamp = "force",
+    tag_list = [
+        "{{.STABLE_GIT_COMMIT}}",
+        "latest",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+# --------------------------------------------------------------------------
 # REST: the Pedestal comparison arm, same echo semantics, same base and heap
 # as the gRPC JVM arm so the only variable is the stack.
 

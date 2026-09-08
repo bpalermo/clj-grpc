@@ -29,6 +29,19 @@ arms:
     # low-utilization tail-latency arm. Flip per experiment.
     extraEnv:
       EXECUTOR: direct
+  # The typed-interop arm: the same server built from protoc-gen-clojure's
+  # `interop=true` generated code instead of the descriptor-driven one, to
+  # price that generator option on a service. Shares worker-02 with
+  # grpc-native, which has room for one Guaranteed 1-CPU arm and not two, so
+  # like the REST pair it starts scaled to zero and soak/ladder.sh flips the
+  # pair per run. No EXECUTOR: the library default (virtual threads), which is
+  # what grpc-jvm must also be set to for the comparison to have one variable.
+  grpc-jvm-interop:
+    image: "{@//bazel/images:grpc_jvm_interop_push}"
+    probe: grpc
+    nodeSelector: main-worker-02
+    profile: true
+    replicas: 0
   rest-h1:
     image: "{@//bazel/images:rest_push}"
     probe: http

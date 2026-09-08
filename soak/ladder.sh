@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run the switch ladder: one Nighthawk Job per (arm, mode, tier), in sequence,
-# each against a freshly restarted arm (run spec: arm:mode:tier[:ramp[:streams]]), with the sibling REST arm scaled to
-# zero so nothing else on that node is warm. Logs land in RESULTS_DIR as
+# each against a freshly restarted arm (run spec: arm:mode:tier[:ramp[:streams]]), with the sibling arm on that node
+# (rest-h1/rest-h2c, grpc-native/grpc-jvm-interop) scaled to zero so nothing
+# else on that node is warm. Logs land in RESULTS_DIR as
 # <runId>.log; soak/collect.sh turns each into a table.
 #
 #   soak/ladder.sh [RESULTS_DIR] [RUN...]
@@ -85,6 +86,10 @@ for run in "${runs[@]}"; do
   case "${arm}" in
     rest-h1)  pairing=(--set arms.rest-h1.replicas=1 --set arms.rest-h2c.replicas=0) ;;
     rest-h2c) pairing=(--set arms.rest-h1.replicas=0 --set arms.rest-h2c.replicas=1) ;;
+    # grpc-jvm-interop shares worker-02 with grpc-native for the same reason
+    # the REST arms share worker-04: one Guaranteed 1-CPU arm per node.
+    grpc-jvm-interop) pairing=(--set arms.grpc-native.replicas=0 --set arms.grpc-jvm-interop.replicas=1) ;;
+    grpc-native)      pairing=(--set arms.grpc-jvm-interop.replicas=0 --set arms.grpc-native.replicas=1) ;;
     *)        pairing=() ;;
   esac
   upgrade --set loadJob.enabled=false "${pairing[@]}" >/dev/null
