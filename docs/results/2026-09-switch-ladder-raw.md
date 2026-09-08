@@ -787,6 +787,68 @@ numbers are therefore comparable only within one digest. The campaign's native s
 not be diffed against one from another chart version. The JVM and REST images are
 reproducible — the REST image was skipped as unchanged across four consecutive builds.
 
+## The typed interop arm, 2026-09-08 — the ceiling that is not one
+
+protoc-gen-clojure's `interop=true` emits typed calls into protoc's generated Java
+classes instead of routing through clj-protobuf's codec. It had only ever been measured
+in criterium, where it wins, and it was the assumed ceiling the descriptor-compiled
+codec was aimed at. Chart 0.2.11 adds a fourth arm carrying that generated code
+(`grpc-jvm-interop`, the same image in every other respect — the control image was
+bit-identical across 0.2.10 and 0.2.11, so the generated namespace is the only
+variable). Both arms on the library's default executor, profiled, matched steps.
+
+Scope first, because it bounds everything below: `interop=true` types the WRITE path —
+scalars and singular message fields, the latter since protoc-gen-clojure 0.5.1 — while
+repeated fields and **the entire read path** stay on the codec. The soak handler decodes
+every request and re-encodes the echo, so roughly half the codec work is addressable,
+and the realistic tier exercises more of it than tiny (a nested `Payload` with five
+scalars, against one string).
+
+### unary, realistic
+
+| offered | codec CPU | interop CPU | codec p50 | interop p50 |
+|---|---|---|---|---|
+| 1,000 | 0.666 ms/req | 0.727 | 2.18 ms | 2.10 |
+| 2,000 | 0.432 | 0.459 | 3.72 | 2.76 |
+| 3,000 | 0.310 | 0.317 | 6.30 | 7.08 |
+
+### 40 streams, realistic
+
+| offered | codec CPU | interop CPU | codec p50 | interop p50 |
+|---|---|---|---|---|
+| 2,000 | 0.347 ms/msg | 0.371 | 2.03 ms | 1.87 |
+| 3,500 | 0.228 | 0.243 | 4.09 | 1.86 |
+| 5,000 | 0.181 | 0.185 | 5.80 | 3.11 |
+
+### What it means
+
+**The typed path costs 2–9% more CPU and returns 10–55% lower p50.** That is not a
+contradiction, and the profiles say why. The codec's share does fall as designed —
+inclusive 22.2% → 11.5% on unary, and `clj_protobuf` self time 7.6% → 4.3% — but the
+work reappears elsewhere: protobuf-java 1.6% → 3.1%, the generated `com.acme.greeter`
+classes 0% → 1.8%, and the JVM's own JIT and GC 10.6% → 16.9%, with heap at the top
+step roughly doubled. A generated builder allocates a builder and then a built message
+per call; the compiled codec writes into a slot array it already owns. The allocation is
+paid by the collector, off the request path, which is why the request itself gets
+faster while the pod's CPU bill goes up.
+
+On a 1-CPU pod CPU is the binding constraint, so **the descriptor-compiled codec is the
+better default and interop is not a ceiling to chase** — clj-protobuf 0.2.x has
+overtaken protoc's generated builders for this shape. Where latency at a fixed, modest
+rate matters more than capacity, and the pod has cores to spare, the trade inverts.
+
+What this does argue for is the half that is still untouched: the read path. Every
+`proto->X` goes through `codec/get-field` in both arms, `get-field` is 7.4% inclusive in
+the interop arm against 5.0% in the control (it reads reflectively from a generated
+message rather than from slots), and nothing in the generator addresses it today. A
+typed read path is the request worth making of protoc-gen-clojure — not more typing of
+the write path.
+
+Caveats: one run per arm per shape; the interop unary 3,000 step carried a JIT outlier
+(p99 1.07 s, 16 s throttled) and its CPU figure is the least trustworthy number in the
+tables; both arms ran the library-default executor, so these are not comparable to the
+`:direct` rows elsewhere in this document.
+
 ## The ladder — what is on the table for an existing REST service
 
 Per core, 1-CPU pods, one instrument, each rung differing from the one
