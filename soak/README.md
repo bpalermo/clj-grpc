@@ -102,6 +102,29 @@ one comparison. An A/B that sets `JAVA_TOOL_OPTIONS` itself through
 `LADDER_EXTRA_SET` keeps its flags: on a profiled run the chart appends the
 agent to them instead of emitting the variable twice.
 
+## Runtime direct linking
+
+The JVM arms run with `-Dclojure.compiler.direct-linking=true`, set by the
+chart (`directLinking.enabled`, on by default) rather than baked into the
+images, so a run can A/B it with `--set directLinking.enabled=false` and no
+rebuild. It is worth 5–17% CPU per request here (2026-09-08 runs) and it is
+the only lever that reaches the codec: clj-protobuf, Pedestal and jsonista
+all publish to Clojars as source, so Clojure compiles them at load time in
+the image, and load-time compilation is exactly what this property links.
+rules_clj's build-time `direct_linking` attribute cannot touch them, and
+refuses to try.
+
+It changes semantics, not just speed. The property is process-wide and
+applies to everything loaded from source, so a linked call site no longer
+sees a later redefinition: `with-redefs`, mocking and REPL reloading stop
+taking effect through one. That is right for a server image and wrong for a
+REPL, and it is why this is a value you can turn off rather than a property
+of the image. Nothing in this repo redefines at runtime.
+
+The native arm never gets it: a native image has no Clojure compiler and
+loads nothing from source, so the property would be a flag that does
+nothing.
+
 ## Grading
 
 From `tables.md` (per step: delivered/s, p50/p99/p999, knee/s, CPU ms/req,

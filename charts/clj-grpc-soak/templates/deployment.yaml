@@ -41,36 +41,45 @@ spec:
       containers:
         - name: server
           image: "{{ $arm.image }}"
-          {{- /* The Pyroscope Java agent attaches only when this arm is
-               profiled AND profiling is on. Attaching is the whole cost: a
-               JVMTI agent, even one whose profiler is idle, turns on the
-               virtual-thread transition hooks (JvmtiThreadState per vthread,
-               VTMS transition bookkeeping) on every mount and unmount, which
-               taxes the VT executor and nothing else — so the images carry
-               the jar but never load it; this env does. */}}
-          {{- $agent := and $arm.profile $.Values.profiling.enabled }}
-          {{- $javaToolOptionsSet := false }}
+          {{- /* JAVA_TOOL_OPTIONS has three possible contributors and
+               Kubernetes keeps only the last entry of a duplicated name, so
+               they are composed into one value here:
+
+                 1. the arm's own extraEnv value, if it sets the variable
+                    (an A/B's JVM flags, via ladder.sh's LADDER_EXTRA_SET)
+                 2. runtime direct linking, on the JVM arms
+                 3. Pyroscope's agent, when this arm is profiled and
+                    profiling is on
+
+               The agent is attached rather than merely enabled because
+               attaching is the cost: a JVMTI agent turns on the JVM's
+               virtual-thread transition hooks on every mount and unmount
+               even when its profiler is idle, so the images carry the jar
+               and never -javaagent it themselves. */}}
+          {{- $agent := and $arm.jvm $arm.profile $.Values.profiling.enabled }}
+          {{- $linking := and $arm.jvm $.Values.directLinking.enabled }}
+          {{- $extraJto := "" }}
+          {{- range $k, $v := ($arm.extraEnv | default dict) }}
+          {{- if eq $k "JAVA_TOOL_OPTIONS" }}{{ $extraJto = $v }}{{ end }}
+          {{- end }}
+          {{- $jto := list }}
+          {{- if $extraJto }}{{ $jto = append $jto $extraJto }}{{ end }}
+          {{- if $linking }}{{ $jto = append $jto "-Dclojure.compiler.direct-linking=true" }}{{ end }}
+          {{- if $agent }}{{ $jto = append $jto "-javaagent:/pyroscope.jar" }}{{ end }}
           env:
             - name: PORT
               value: "8080"
             {{- range $k, $v := ($arm.extraEnv | default dict) }}
-            {{- if and $agent (eq $k "JAVA_TOOL_OPTIONS") }}
-            {{- /* One variable, one entry: an A/B's own JVM flags and the
-                 agent ride together rather than as two JAVA_TOOL_OPTIONS,
-                 of which Kubernetes would keep only the last. */}}
-            {{- $javaToolOptionsSet = true }}
-            - name: JAVA_TOOL_OPTIONS
-              value: {{ printf "%s -javaagent:/pyroscope.jar" $v | quote }}
-            {{- else }}
+            {{- if ne $k "JAVA_TOOL_OPTIONS" }}
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
             {{- end }}
-            {{- if $agent }}
-            {{- if not $javaToolOptionsSet }}
+            {{- if $jto }}
             - name: JAVA_TOOL_OPTIONS
-              value: "-javaagent:/pyroscope.jar"
+              value: {{ join " " $jto | quote }}
             {{- end }}
+            {{- if $agent }}
             # The application name is suffixed so these series never merge
             # with the eBPF profiler's, which labels the pod by Deployment name.
             - name: PYROSCOPE_SERVER_ADDRESS

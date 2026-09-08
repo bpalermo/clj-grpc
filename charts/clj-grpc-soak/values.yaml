@@ -20,10 +20,12 @@ arms:
     probe: grpc
     nodeSelector: main-worker-02
     profile: false
+    jvm: false
   grpc-jvm:
     image: "{@//bazel/images:grpc_jvm_push}"
     probe: grpc
     nodeSelector: main-worker-03
+    jvm: true
     profile: true
     # :direct won every high-load regime in August; the VT default is the
     # low-utilization tail-latency arm. Flip per experiment.
@@ -40,12 +42,14 @@ arms:
     image: "{@//bazel/images:grpc_jvm_interop_push}"
     probe: grpc
     nodeSelector: main-worker-02
+    jvm: true
     profile: true
     replicas: 0
   rest-h1:
     image: "{@//bazel/images:rest_push}"
     probe: http
     nodeSelector: main-worker-04
+    jvm: true
     profile: true
     extraEnv:
       H2C: "off"
@@ -53,6 +57,7 @@ arms:
     image: "{@//bazel/images:rest_push}"
     probe: http
     nodeSelector: main-worker-04
+    jvm: true
     profile: true
     # Shares worker-04 with rest-h1, and that node has room for one Guaranteed
     # 1-CPU arm, not two. Only one REST arm is up at a time: this one starts
@@ -82,6 +87,27 @@ probes:
 # Where load generators run (the Nighthawk Job / the stream cross-check).
 runner:
   nodeSelector: main-worker-05
+
+# Runtime direct linking: -Dclojure.compiler.direct-linking=true on the JVM
+# arms. Measured on this harness (docs/results, 2026-09-08): unary 0.461 ->
+# 0.437 ms/req at 1,000 and 0.283 -> 0.245 at 3,000; stream 0.315 -> 0.260
+# ms/msg at 2,000; Var.getRawRoot 3.2% -> 1.12% of samples. It reaches what
+# the build-time attribute cannot: clj-protobuf, Pedestal and jsonista all
+# publish as source and are compiled by Clojure at load time in the image,
+# and that is exactly the code this links.
+#
+# It is a SEMANTIC change, not only a speed one: the property is process-wide
+# and applies to everything loaded from source, so a linked call site stops
+# seeing later redefinition — with-redefs and REPL reloading do not take
+# effect through one. Right for a server image, wrong for a REPL. Nothing in
+# this repo redefines at runtime.
+#
+# A value rather than a baked entrypoint flag so a run can A/B it without
+# rebuilding an image. The native arm is deliberately excluded: a native
+# image has no Clojure compiler, nothing is compiled at load time in it, and
+# the property would be a flag that does nothing.
+directLinking:
+  enabled: true
 
 # Pyroscope's Java agent on the `profile: true` arms, attached through
 # JAVA_TOOL_OPTIONS=-javaagent:/pyroscope.jar only when this is on; off, no
