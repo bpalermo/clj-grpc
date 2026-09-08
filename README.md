@@ -90,12 +90,20 @@ TLS: h2c needs none. For TLS, JDK SSL works out of the box via `:tls`;
 
 Two measured levers, honest about their trade:
 
-- **`:executor :direct`** runs handlers on the Netty event loop: **−29% unary
-  latency** (265 → 187 µs loopback) for provably non-blocking handlers — and
-  the inverse under load, where the default virtual-thread executor wins by
-  ~9% (23,060 vs 21,133 calls/s at 32-way concurrency; `bazel run //bench:run
-  -- load` reproduces both). A blocking handler on a direct executor stalls
-  every connection on that loop. Default stays virtual threads.
+- **`:executor :direct`** runs handlers on the Netty event loop, and what it
+  buys depends on how many cores the process has. On loopback, with cores to
+  spare: **−29% unary latency** (265 → 187 µs) and ~9% *less* throughput than
+  the virtual-thread default at 32-way concurrency (21,133 vs 23,060 calls/s;
+  `bazel run //bench:run -- load` reproduces both). On a 1-CPU pod, where one
+  event loop is the whole machine, that inversion disappears: the on-cluster
+  ladder measures `:direct` ahead on every axis — 15–27% less CPU per unary
+  request, ~25% more streaming capacity, p50 roughly half at every matched
+  rate ([docs/soak-results.md](docs/soak-results.md)). So the case for
+  `:direct` is tail latency and CPU on a small pod, not throughput in
+  general, and the case against it is unchanged and absolute: a handler that
+  blocks on a direct executor stalls every connection on that loop. Default
+  stays virtual threads — the only safe setting for handlers that may block,
+  and the one grpc-java intends to keep optimising.
 - **Streaming beats tuning by two orders of magnitude.** Every unary call
   costs ~190–275 µs of machinery; serializing an entire 20-row message costs
   ~7 µs. If a workload makes N small calls where one stream would do, no
