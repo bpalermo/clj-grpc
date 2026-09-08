@@ -693,6 +693,100 @@ JIT warmup at any step, and heap growth to ~200 MB at the top tiny-unary
 steps. Roughly half the JVM-VT arm and a third of `:direct` on this hardware;
 it was not re-run on the agent-free charts because it has no JVM and no agent.
 
+## Direct linking at runtime, 2026-09-08
+
+`clojure.lang.Var.getRawRoot` was 3.2% of samples under the compiled codec — every
+cross-namespace `defn` call pays one. rules_clj 0.2.4 adds a build-time
+`direct_linking` attribute for that, but it cannot reach the code that matters here:
+clj-protobuf is published to Clojars as source (its 0.2.2 jar holds ten `.clj`
+entries and no classes), so its namespaces are compiled by Clojure at load time and
+were never compiled ahead of time. A caller that *is* compiled ahead of time may not
+link into them at all — the class a direct call names exists only once the callee is
+loaded — which rules_clj refuses at build time.
+
+What does reach it is the same option applied to the runtime compiler:
+`-Dclojure.compiler.direct-linking=true` on the arm's JVM. Everything Clojure compiles
+at load time then emits direct calls, and the references resolve because caller and
+callee share one classloader. Chart 0.2.9, stock image, one environment variable,
+against an identical baseline run in the same hour.
+
+### unary, baseline (`nh-grpc-jvm-grpc-unary-realistic-09081120`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.83 | 3189.37 | 6125.52 | 0.0 | 1.253 | 12.0 | 26 | 180 |
+| 1000 | 1000.0 | 1.52 | 22.10 | 79.13 | 0.0 | 0.461 | 0.9 | 26 | 181 |
+| 2000 | 1999.9 | 1.97 | 46.54 | 122.10 | 0.0 | 0.335 | 0.9 | 21 | 185 |
+| 3000 | 2916.0 | 4.03 | 2297.95 | 9450.29 | 81.3 | 0.283 | 26.6 | 29 | 207 |
+
+### unary, linked (`nh-grpc-jvm-grpc-unary-realistic-09081055`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.77 | 2735.47 | 4257.74 | 0.0 | 1.193 | 9.2 | 19 | 178 |
+| 1000 | 1000.0 | 1.54 | 21.98 | 65.80 | 0.0 | 0.437 | 0.4 | 19 | 179 |
+| 2000 | 1999.9 | 1.80 | 44.85 | 105.96 | 0.0 | 0.324 | 0.8 | 27 | 182 |
+| 3000 | 2999.9 | 2.43 | 104.82 | 230.93 | 0.1 | 0.245 | 1.8 | 29 | 188 |
+
+### 40 streams, baseline (`nh-grpc-jvm-grpc-stream-realistic-09081132`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.54 | 145.00 | 1005.06 | 0.0 | 0.931 | 2.3 | 20 | 206 |
+| 2000 | 1999.8 | 1.56 | 723.39 | 2270.43 | 0.0 | 0.315 | 9.7 | 20 | 218 |
+| 3500 | 3499.8 | 1.53 | 87.03 | 261.19 | 0.0 | 0.191 | 1.1 | 29 | 224 |
+| 5000 | 4998.0 | 2.09 | 125.39 | 203.19 | 0.0 | 0.146 | 0.6 | 29 | 226 |
+
+### 40 streams, linked (`nh-grpc-jvm-grpc-stream-realistic-09081108`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.52 | 30.47 | 698.71 | 0.0 | 0.788 | 1.7 | 25 | 167 |
+| 2000 | 1999.9 | 1.30 | 765.46 | 2349.73 | 0.0 | 0.260 | 4.2 | 28 | 192 |
+| 3500 | 3498.8 | 1.47 | 689.47 | 2592.60 | 1.0 | 0.186 | 1.4 | 28 | 197 |
+| 5000 | 4999.8 | 1.73 | 91.49 | 221.76 | 0.0 | 0.136 | 0.1 | 28 | 199 |
+
+### What the property buys
+
+| workload | step | baseline | linked | saving |
+|---|---|---|---|---|
+| unary | 1,000 rps | 0.461 ms/req | 0.437 | 5% |
+| unary | 2,000 rps | 0.335 | 0.324 | 3% |
+| unary | 3,000 rps | 0.283 | 0.245 | 13% |
+| stream | 2,000 msg/s | 0.315 ms/msg | 0.260 | 17% |
+| stream | 3,500 msg/s | 0.191 | 0.186 | 3% |
+| stream | 5,000 msg/s | 0.146 | 0.136 | 7% |
+
+`Var.getRawRoot` falls from 3.2% of samples to 1.12%, the remainder being
+`clojure.core`'s own calls, which `clojure.jar` already ships linked. p50 improves at
+every matched step (unary at 3,000: 4.03 → 2.43 ms), and the linked arm delivers all
+3,000 rps where the baseline sheds to 2,916. clj-protobuf's own suite — 56 tests, 637
+assertions — passes under the property, and the library defines no dynamic vars, no
+`^:redef` fns and never uses `alter-var-root` or `with-redefs`, so nothing in the
+measured path depends on late binding.
+
+**The two levers cover disjoint code, and neither covers both.** The runtime property
+links what Clojure compiles at load time: clj-protobuf's codec, Pedestal, jsonista.
+rules_clj's `direct_linking` attribute links what the build compiles ahead of time:
+clj-grpc's own namespaces. Today the attribute cannot be used here at all — a single
+call in `clj-grpc.service` into clj-protobuf's runtime disqualifies the whole target,
+verified against rules_clj main — so the property is the only lever that reaches the
+hot path. The mechanism that would cover both is compiling a Maven source jar inside
+the consumer's build, sketched on rules_clj#18 and unbuilt.
+
+Caveat for anyone extending this: the property is process-wide and changes late
+binding for every namespace loaded from source, so a service that redefines at runtime
+must not take it without checking.
+
+### A caveat on the native arm, from the image digests
+
+The native image is not reproducible build-to-build: its digest moved between chart
+0.2.9 and 0.2.10 with no source change, and again during an unrelated release. Native
+numbers are therefore comparable only within one digest. The campaign's native set
+(chart 0.2.6, four runs, one digest) is self-consistent and stands; a native run must
+not be diffed against one from another chart version. The JVM and REST images are
+reproducible — the REST image was skipped as unchanged across four consecutive builds.
+
 ## The ladder — what is on the table for an existing REST service
 
 Per core, 1-CPU pods, one instrument, each rung differing from the one
