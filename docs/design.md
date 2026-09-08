@@ -99,12 +99,22 @@ own semantics, not a reimplementation. Thrown exceptions become
 (`HealthStatusManager`, default on) and reflection (v1, opt-in) are wired as
 grpc-services instances, not reimplemented.
 
-Executor choice is measured, not asserted: `:executor :direct` (the Netty
-event loop) cuts unary latency ~29% and loses ~9% throughput at 32-way
-concurrency — the load mode of the benchmark exists precisely because the
-sequential lens inverts under load. The per-call machinery floor (~190 µs)
-also anchors the strongest guidance this library can give: one stream beats N
-small unaries by two orders of magnitude, before any tuning.
+Executor choice is measured, not asserted — and the measurement depends on
+the core budget, which is why there are two of them. On loopback with cores
+to spare, `:executor :direct` (the Netty event loop) cuts unary latency ~29%
+and loses ~9% throughput at 32-way concurrency; the load mode of the
+benchmark exists precisely because the sequential lens inverts under load.
+On a 1-CPU pod that inversion is gone: the on-cluster ladder puts `:direct`
+ahead on CPU per request (15–27% on unary), on streaming capacity (~25%) and
+on p50 (roughly half), because there VT's per-mount cost buys parallelism the
+pod has no cores to use. So the argument for `:direct` is tail latency on a
+small pod rather than throughput anywhere, the argument against it is
+unchanged and absolute — a blocking handler stalls the loop — and grpc-java's
+position that `:direct` will not be optimised further settles the default:
+virtual threads, which is also the ladder's baseline. The per-call machinery
+floor (~190 µs) still anchors the strongest guidance this library can give:
+one stream beats N small unaries by two orders of magnitude, before any
+tuning.
 
 Handlers run on virtual threads by default: Clojure handlers block — that is
 the model — and grpc's default shared pool is sized for handlers that never

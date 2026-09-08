@@ -38,6 +38,13 @@ image_manifest(
     cmd = [
         "-Xmx512m",
         "-Xmn256m",
+        # Explicit, not default: Netty's leak detector samples buffer
+        # lifecycles, and the campaign measured it at ~4% of CPU per request
+        # at 1,000 rps unary, ~1% at the knee, nothing on streams. A load
+        # harness wants the number it is measuring, not a sampling profiler
+        # it forgot about; a production deployment should think again.
+        # A native image parses -D at run time like a JVM does.
+        "-Dio.netty.leakDetection.level=disabled",
     ],
     entrypoint = ["/coldstart-server"],
     layers = [":grpc_native_layer"],
@@ -90,6 +97,10 @@ image_manifest(
     entrypoint = [
         "/usr/bin/java",
         "-Xmx512m",
+        # See the native arm's cmd: explicit rather than inherited, and off
+        # because the harness measures the server, not the leak detector.
+        # The REST image gets no such flag — Jetty is not Netty.
+        "-Dio.netty.leakDetection.level=disabled",
         "-jar",
         "/app.jar",
     ],
