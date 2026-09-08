@@ -778,83 +778,49 @@ Caveat for anyone extending this: the property is process-wide and changes late
 binding for every namespace loaded from source, so a service that redefines at runtime
 must not take it without checking.
 
-### A caveat on the native arm, from the image digests
+### A caveat on image digests — corrected 2026-09-08
 
-The native image is not reproducible build-to-build: its digest moved between chart
-0.2.9 and 0.2.10 with no source change, and again during an unrelated release. Native
-numbers are therefore comparable only within one digest. The campaign's native set
-(chart 0.2.6, four runs, one digest) is self-consistent and stands; a native run must
-not be diffed against one from another chart version. The JVM and REST images are
-reproducible — the REST image was skipped as unchanged across four consecutive builds.
+An earlier version of this section said the native image is not reproducible while
+"the JVM and REST images are reproducible". The second half is wrong, and the way it
+is wrong matters more than the fact.
 
-## The typed interop arm, 2026-09-08 — the ceiling that is not one
+**No image here is byte-reproducible.** The same source built twice into separate
+output bases produces deploy jars differing in 42 entries by CRC, all anonymous
+function classes in `clj-grpc.soak.stream-driver`, `clj-grpc.coldstart.steady` and
+`clj-grpc.coldstart.measure` — most likely a persistent compile worker's JVM-global
+counters, unproven. The native image drifts most visibly, but it is not special.
 
-protoc-gen-clojure's `interop=true` emits typed calls into protoc's generated Java
-classes instead of routing through clj-protobuf's codec. It had only ever been measured
-in criterium, where it wins, and it was the assumed ceiling the descriptor-compiled
-codec was aimed at. Chart 0.2.11 adds a fourth arm carrying that generated code
-(`grpc-jvm-interop`, the same image in every other respect — the control image was
-bit-identical across 0.2.10 and 0.2.11, so the generated namespace is the only
-variable). Both arms on the library's default executor, profiled, matched steps.
+**And a published chart version is not immutable.** Every merge to main runs the image
+build, re-pushes any image whose fresh digest differs from the registry's, and
+republishes the chart at whatever version `Chart.yaml` names — overwriting it in place.
+Combined with the above, a docs-only merge can redefine a chart that has already been
+published and measured against. Chart 0.2.11 pinned `soak-grpc-native@sha256:eed3976a`
+when it was published and pins `20afcb26` now, changed by two later documentation
+merges.
 
-Scope first, because it bounds everything below: `interop=true` types the WRITE path —
-scalars and singular message fields, the latter since protoc-gen-clojure 0.5.1 — while
-repeated fields and **the entire read path** stay on the codec. The soak handler decodes
-every request and re-encodes the echo, so roughly half the codec work is addressable,
-and the realistic tier exercises more of it than tiny (a nested `Payload` with five
-scalars, against one string).
+So "pin the chart version and you pin the images" does not hold, and every result in
+this document was recorded against a chart version rather than a digest.
 
-### unary, realistic
+**What that costs these results: nothing, checked rather than assumed.** For charts
+0.2.8, 0.2.9, 0.2.10 and 0.2.11, the JVM and REST digests each chart pins today are
+identical to the ones reported when it was published; only the native arm's digest
+moved (in 0.2.9 and 0.2.11). Every comparison in this document runs on JVM arms, so
+each pair ran on the images its chart still names:
 
-| offered | codec CPU | interop CPU | codec p50 | interop p50 |
+| chart | soak-grpc-jvm | soak-grpc-jvm-interop | soak-rest | soak-grpc-native |
 |---|---|---|---|---|
-| 1,000 | 0.666 ms/req | 0.727 | 2.18 ms | 2.10 |
-| 2,000 | 0.432 | 0.459 | 3.72 | 2.76 |
-| 3,000 | 0.310 | 0.317 | 6.30 | 7.08 |
+| 0.2.8 | `b7d8ba22` | — | `13895fa8` | `a815b531` |
+| 0.2.9 | `35b01808` | — | `13895fa8` | `50e8c119` → `dc475350` |
+| 0.2.10 | `313ed480` | — | `13895fa8` | `526cec7e` |
+| 0.2.11 | `313ed480` | `79edecfa` | `13895fa8` | `eed3976a` → `20afcb26` |
 
-### 40 streams, realistic
+The native set elsewhere in this document ran on chart 0.2.6 as a single self-consistent
+group and was never diffed across charts, which was already its stated caveat.
 
-| offered | codec CPU | interop CPU | codec p50 | interop p50 |
-|---|---|---|---|---|
-| 2,000 | 0.347 ms/msg | 0.371 | 2.03 ms | 1.87 |
-| 3,500 | 0.228 | 0.243 | 4.09 | 1.86 |
-| 5,000 | 0.181 | 0.185 | 5.80 | 3.11 |
-
-### What it means
-
-**The typed path costs 2–9% more CPU and returns 10–55% lower p50.** That is not a
-contradiction, and the profiles say why. The codec's share does fall as designed —
-inclusive 22.2% → 11.5% on unary, and `clj_protobuf` self time 7.6% → 4.3% — but the
-work reappears elsewhere: protobuf-java 1.6% → 3.1%, the generated `com.acme.greeter`
-classes 0% → 1.8%, and the JVM's own JIT and GC 10.6% → 16.9%, with heap at the top
-step roughly doubled. A generated builder allocates a builder and then a built message
-per call; the compiled codec writes into a slot array it already owns. The allocation is
-paid by the collector, off the request path, which is why the request itself gets
-faster while the pod's CPU bill goes up.
-
-On a 1-CPU pod CPU is the binding constraint, so **the descriptor-compiled codec is the
-better default and interop is not a ceiling to chase** — clj-protobuf 0.2.x has
-overtaken protoc's generated builders for this shape. Where latency at a fixed, modest
-rate matters more than capacity, and the pod has cores to spare, the trade inverts.
-
-What this does argue for is the half that is still untouched: the read path. Every
-`proto->X` goes through `codec/get-field` in both arms, and it is 7.4% inclusive in the
-interop arm against 5.0% in the control. Not because it reflects — on the hinted arm
-`get-field` calls `LambdaMetafactory` invokers over the generated `hasX`/`getX`, one per
-field, from a single megamorphic call site — but because a slot read is cheaper than
-that, which clj-protobuf's own corpus had already shown (flat decode 562 ns compiled
-against 816 ns hinted). Nothing in the generator addresses the read side today. A
-typed read path is the request worth making of protoc-gen-clojure — not more typing of
-the write path. Concretely: with `interop=true`, emit `proto->X` as direct `(.getX msg)`
-calls the way `X->proto` already emits `.setX` — guarded by `hasX` for presence fields,
-enums through `getXValue`, collections through `getXList`/`getXMap` — keeping
-`codec/get-field` for the opts route. Byte-neutral by construction, and the plugin's
-existing reflection gate would catch an unhinted call.
-
-Caveats: one run per arm per shape; the interop unary 3,000 step carried a JIT outlier
-(p99 1.07 s, 16 s throttled) and its CPU figure is the least trustworthy number in the
-tables; both arms ran the library-default executor, so these are not comparable to the
-`:direct` rows elsewhere in this document.
+**For future campaigns**, record the image digest with each run rather than the chart
+version. The durable fix is a policy choice: either make the build refuse to publish a
+chart version that already exists, or make the builds reproducible so a re-push is a
+no-op. Neither is done.
 
 ## The ladder — what is on the table for an existing REST service
 
