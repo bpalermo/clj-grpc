@@ -41,10 +41,15 @@ helm_chart(
     name = "soak",
     chart = "clj-grpc-soak/Chart.yaml",
     files = glob(["clj-grpc-soak/files/**"]) + [":bodies"],
+    # The native image is deliberately absent: GraalVM's output is not
+    # reproducible, so pinning it here made every graph-invalidating change
+    # rewrite the chart's render and force a version bump that had nothing to
+    # do with the change. It is also not a rung of the ladder, and its numbers
+    # are comparable only within one digest anyway — so a native campaign
+    # passes the digest at the point of use (see values.yaml).
     images = [
         "//bazel/images:grpc_jvm_interop_push",
         "//bazel/images:grpc_jvm_push",
-        "//bazel/images:grpc_native_push",
         "//bazel/images:rest_push",
     ],
     registry_url = "oci://ghcr.io/bpalermo/clj-grpc/charts",

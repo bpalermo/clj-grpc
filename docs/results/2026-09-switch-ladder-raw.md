@@ -818,9 +818,43 @@ The native set elsewhere in this document ran on chart 0.2.6 as a single self-co
 group and was never diffed across charts, which was already its stated caveat.
 
 **For future campaigns**, record the image digest with each run rather than the chart
-version. The durable fix is a policy choice: either make the build refuse to publish a
-chart version that already exists, or make the builds reproducible so a re-push is a
-no-op. Neither is done.
+version.
+
+### Both fixes, done — and what survived them
+
+The two durable options above were framed as a choice. Both were taken, and between them
+they leave one residue worth stating.
+
+**The compile worker was the cause, and it is fixed.** Not the multiplexing I first
+guessed: HotSpot draws identity hash codes from a per-thread PRNG whose sequence depends
+on how much the JVM has already done, and Clojure's compiler walks maps keyed on those
+identities when it decides where to emit locals-clearing instructions. A warm worker
+therefore emitted different bytecode depending on which targets a namespace was compiled
+beside — same instructions, different order, only in fn classes with `let` bindings.
+rules_clj 0.2.5 pins the identity hash in the worker JVM. Verified twice: two builds in
+separate output bases now produce one digest locally, and on the arm64 runners the first
+graph-invalidating merge after it (`ccaa8d7`) rebuilt everything and changed **one** image
+of four — the native one. The JVM and REST images are byte-stable across independent
+builds, which is what the corrected paragraph above said they were not.
+
+**A published chart version can no longer be redefined.** The build refuses to publish a
+chart version that already exists unless the render is identical, and it refuses before
+pushing any image, so a refusal costs a red build and nothing else. The remedy it prints
+is to bump `Chart.yaml`.
+
+**What survived: GraalVM.** The native image is still not reproducible, and the pinned
+GraalVM CE 21.0.2 offers no option for it — nothing matching `reproduc`, `deterministic`
+or `SOURCE_DATE` among its 1345 expert options. With the chart pinning that image, every
+graph-invalidating change rewrote the render and forced a chart bump unrelated to the
+change; two bumps (0.2.14, 0.2.16) were spent that way. So **the chart no longer pins the
+native image at all**: `grpc-native` carries an empty image, renders nothing by default,
+and a native campaign passes the digest it means
+(`NATIVE_IMAGE=…@sha256:…`, see `soak/README.md`). The three arms the chart does pin
+render identically across independent builds, checked the same way the drift was found.
+
+Net effect for a reader of this document: a chart version now names one thing for the JVM
+and REST arms, and native runs name their digest directly — which is what the caveat above
+asked for.
 
 ## The ladder — what is on the table for an existing REST service
 

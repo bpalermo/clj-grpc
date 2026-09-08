@@ -7,7 +7,9 @@
 set -euo pipefail
 tgz="$1"
 values=$(tar xzf "$tgz" -O clj-grpc-soak/values.yaml)
-for repo in soak-grpc-native soak-grpc-jvm soak-rest; do
+# grpc-native is not pinned by this chart (see charts/BUILD.bazel), so it is
+# not expected among the stamped digests.
+for repo in soak-grpc-jvm soak-grpc-jvm-interop soak-rest; do
   echo "$values" | grep -Eq "ghcr\.io/bpalermo/clj-grpc/${repo}@sha256:[a-f0-9]{64}" \
     || { echo "FAIL: no stamped digest for ${repo}"; echo "$values" | grep image:; exit 1; }
 done

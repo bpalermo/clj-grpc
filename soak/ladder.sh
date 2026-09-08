@@ -51,6 +51,14 @@ read -ra extra_set <<<"${LADDER_EXTRA_SET:-}"
 extra_flags=()
 for kv in "${extra_set[@]}"; do extra_flags+=(--set-string "${kv}"); done
 
+# The chart does not pin the native image (GraalVM is not reproducible, and its
+# numbers only compare within one digest), so a native run says which one it
+# means. Carried on EVERY upgrade for the same reason the pairing is: the
+# Job-start upgrade re-applies the chart and would drop it.
+if [ -n "${NATIVE_IMAGE:-}" ]; then
+  extra_flags+=(--set-string "arms.grpc-native.image=${NATIVE_IMAGE}")
+fi
+
 upgrade() { # $@ = --set key=value pairs
   if [ "${chart}" = "bazel" ]; then
     bazel run //charts:soak.upgrade -- --namespace "${ns}" --set "profiling.enabled=${profiling}" "${extra_flags[@]}" "$@"
@@ -73,6 +81,17 @@ wait_ready() { # $1 = deployment
 }
 
 realistic_ramp="${REALISTIC_RAMP:-100 200 300 400 500 600 800 1000 1200 1400 1600}"
+
+# Fail before deploying anything rather than measuring an arm that is not
+# there: an imageless arm renders no Service, and a Job pointed at a missing
+# Service reports zeros on every step instead of failing.
+for run in "${runs[@]}"; do
+  if [ "${run%%:*}" = "grpc-native" ] && [ -z "${NATIVE_IMAGE:-}" ]; then
+    log "run '${run}' targets grpc-native, which this chart does not pin."
+    log "Set NATIVE_IMAGE=ghcr.io/bpalermo/clj-grpc/soak-grpc-native@sha256:<digest> and re-run."
+    exit 2
+  fi
+done
 
 for run in "${runs[@]}"; do
   IFS=: read -r arm mode tier ramp streams <<<"${run}"

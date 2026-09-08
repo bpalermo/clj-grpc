@@ -1,4 +1,8 @@
+{{- /* An arm with no image is not deployed at all — not as an empty
+     Service either. A Service whose selector matches nothing is how the
+     first rest-h2c run measured zeros on every step. */}}
 {{- range $name, $arm := .Values.arms }}
+{{- if $arm.image }}
 ---
 apiVersion: v1
 kind: Service
@@ -17,4 +21,5 @@ spec:
     - name: metrics
       port: 9090
       targetPort: 9090
+{{- end }}
 {{- end }}
