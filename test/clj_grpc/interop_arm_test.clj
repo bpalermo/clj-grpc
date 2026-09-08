@@ -56,9 +56,21 @@
             assertion above, a mixed-prototype setup fails loudly instead of
             producing a null result that looks like a finding.
 
-            Pinning the throw, not endorsing it: if clj-protobuf ever makes
-            hinted handles accept foreign messages, this test is how we find
-            out, and the silent-measurement risk comes back with it."
+            This pins a documented contract, not an accident. clj-protobuf's
+            design.md, \"Descriptor pools: never mix them\", says generated fns
+            read and write their own arm's messages and no other: a handle's
+            FieldDescriptor belongs to its prototype's pool, and on a hinted
+            namespace it also carries invokers over that concrete class, so
+            the instance? guard picks between the typed and codec paths
+            without making the fn polymorphic across arms. Crossing arms is
+            invalid and throwing is the intended answer.
+
+            The alternative was considered and rejected there: accepting a
+            foreign message would mean re-resolving each field against that
+            message's descriptor per call, on the hot path, to serve a case
+            the design forbids — and it would restore exactly the
+            silent-measurement risk above. So the risk is closed by design
+            rather than by this arm's configuration."
     (let [req (g/HelloRequest->proto {:name "dynamic" :repeat-count 7})
           proto ^Message (rt/dynamic-message g/file-descriptor "HelloRequest")
           dyn (.parseFrom (.getParserForType proto) (.toByteArray ^Message req))]
