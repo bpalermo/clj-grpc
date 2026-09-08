@@ -17,7 +17,7 @@
 
 ;; ---------------------------------------------------------------
 ;; messages
-(declare Item->proto Payload->proto HelloRequest->proto HelloReply->proto)
+(declare Item->proto Payload->proto HelloRequest->proto HelloReply->proto proto->Item--map proto->Payload--map)
 ;;
 ;; The shape is known at codegen time, so the representation is too:
 ;; a defrecord per type, its FieldDescriptors resolved once into
@@ -50,11 +50,35 @@
   "protobuf -> a Item record. Absent fields are nil."
   ([msg] (proto->Item msg nil))
   ([^com.google.protobuf.Message msg opts]
-   (->Item
-    (codec/get-field msg Item--sku opts)
-    (codec/get-field msg Item--qty opts)
-    (codec/get-field msg Item--price opts)
-    )))
+   (if (and (nil? opts) (instance? com.acme.greeter.Item msg))
+     (let [^com.acme.greeter.Item m msg]
+       (->Item
+        (when (.hasSku m) (.getSku m))
+        (when (.hasQty m) (.getQty m))
+        (when (.hasPrice m) (.getPrice m))
+        ))
+     (->Item
+      (codec/get-field msg Item--sku opts)
+      (codec/get-field msg Item--qty opts)
+      (codec/get-field msg Item--price opts)
+      ))))
+(defn- proto->Item--map
+  "Item as the plain map a nested field reads back as:
+  the same values, minus the keys the codec's read leaves out."
+  [^com.acme.greeter.Item m]
+  (let [sku--v (when (.hasSku m) (.getSku m))
+        qty--v (when (.hasQty m) (.getQty m))
+        price--v (when (.hasPrice m) (.getPrice m))]
+    (if (and (some? sku--v) (some? qty--v) (some? price--v))
+      {:sku sku--v
+       :qty qty--v
+       :price price--v}
+      (persistent!
+       (cond-> (transient {})
+         (some? sku--v) (assoc! :sku sku--v)
+         (some? qty--v) (assoc! :qty qty--v)
+         (some? price--v) (assoc! :price price--v)
+         )))))
 
 (defrecord Payload [id title body created-at score items])
 (def Payload-prototype (rt/message file-descriptor "Payload" "com.acme.greeter.Payload"))
@@ -90,14 +114,50 @@
   "protobuf -> a Payload record. Absent fields are nil."
   ([msg] (proto->Payload msg nil))
   ([^com.google.protobuf.Message msg opts]
-   (->Payload
-    (codec/get-field msg Payload--id opts)
-    (codec/get-field msg Payload--title opts)
-    (codec/get-field msg Payload--body opts)
-    (codec/get-field msg Payload--created-at opts)
-    (codec/get-field msg Payload--score opts)
-    (codec/get-field msg Payload--items opts)
-    )))
+   (if (and (nil? opts) (instance? com.acme.greeter.Payload msg))
+     (let [^com.acme.greeter.Payload m msg]
+       (->Payload
+        (when (.hasId m) (.getId m))
+        (when (.hasTitle m) (.getTitle m))
+        (when (.hasBody m) (.getBody m))
+        (when (.hasCreatedAt m) (.getCreatedAt m))
+        (when (.hasScore m) (.getScore m))
+        (let [l (.getItemsList m)] (when-not (.isEmpty l) (persistent! (reduce (fn [acc v] (conj! acc (proto->Item--map v))) (transient []) l))))
+        ))
+     (->Payload
+      (codec/get-field msg Payload--id opts)
+      (codec/get-field msg Payload--title opts)
+      (codec/get-field msg Payload--body opts)
+      (codec/get-field msg Payload--created-at opts)
+      (codec/get-field msg Payload--score opts)
+      (codec/get-field msg Payload--items opts)
+      ))))
+(defn- proto->Payload--map
+  "Payload as the plain map a nested field reads back as:
+  the same values, minus the keys the codec's read leaves out."
+  [^com.acme.greeter.Payload m]
+  (let [id--v (when (.hasId m) (.getId m))
+        title--v (when (.hasTitle m) (.getTitle m))
+        body--v (when (.hasBody m) (.getBody m))
+        created-at--v (when (.hasCreatedAt m) (.getCreatedAt m))
+        score--v (when (.hasScore m) (.getScore m))
+        items--v (let [l (.getItemsList m)] (when-not (.isEmpty l) (persistent! (reduce (fn [acc v] (conj! acc (proto->Item--map v))) (transient []) l))))]
+    (if (and (some? id--v) (some? title--v) (some? body--v) (some? created-at--v) (some? score--v) (some? items--v))
+      {:id id--v
+       :title title--v
+       :body body--v
+       :created-at created-at--v
+       :score score--v
+       :items items--v}
+      (persistent!
+       (cond-> (transient {})
+         (some? id--v) (assoc! :id id--v)
+         (some? title--v) (assoc! :title title--v)
+         (some? body--v) (assoc! :body body--v)
+         (some? created-at--v) (assoc! :created-at created-at--v)
+         (some? score--v) (assoc! :score score--v)
+         (some? items--v) (assoc! :items items--v)
+         )))))
 
 (defrecord HelloRequest [name repeat-count greeting payload])
 (def HelloRequest-prototype (rt/message file-descriptor "HelloRequest" "com.acme.greeter.HelloRequest"))
@@ -127,12 +187,20 @@
   "protobuf -> a HelloRequest record. Absent fields are nil."
   ([msg] (proto->HelloRequest msg nil))
   ([^com.google.protobuf.Message msg opts]
-   (->HelloRequest
-    (codec/get-field msg HelloRequest--name opts)
-    (codec/get-field msg HelloRequest--repeat-count opts)
-    (codec/get-field msg HelloRequest--greeting opts)
-    (codec/get-field msg HelloRequest--payload opts)
-    )))
+   (if (and (nil? opts) (instance? com.acme.greeter.HelloRequest msg))
+     (let [^com.acme.greeter.HelloRequest m msg]
+       (->HelloRequest
+        (when (.hasName m) (.getName m))
+        (when (.hasRepeatCount m) (.getRepeatCount m))
+        (when (.hasGreeting m) (case (.getGreetingValue m) 0 :GREETING_UNSPECIFIED 1 :GREETING_HELLO 2 :GREETING_HOWDY (codec/get-field m HelloRequest--greeting nil)))
+        (when (.hasPayload m) (proto->Payload--map (.getPayload m)))
+        ))
+     (->HelloRequest
+      (codec/get-field msg HelloRequest--name opts)
+      (codec/get-field msg HelloRequest--repeat-count opts)
+      (codec/get-field msg HelloRequest--greeting opts)
+      (codec/get-field msg HelloRequest--payload opts)
+      ))))
 
 (defrecord HelloReply [message payload])
 (def HelloReply-prototype (rt/message file-descriptor "HelloReply" "com.acme.greeter.HelloReply"))
@@ -156,10 +224,16 @@
   "protobuf -> a HelloReply record. Absent fields are nil."
   ([msg] (proto->HelloReply msg nil))
   ([^com.google.protobuf.Message msg opts]
-   (->HelloReply
-    (codec/get-field msg HelloReply--message opts)
-    (codec/get-field msg HelloReply--payload opts)
-    )))
+   (if (and (nil? opts) (instance? com.acme.greeter.HelloReply msg))
+     (let [^com.acme.greeter.HelloReply m msg]
+       (->HelloReply
+        (when (.hasMessage m) (.getMessage m))
+        (when (.hasPayload m) (proto->Payload--map (.getPayload m)))
+        ))
+     (->HelloReply
+      (codec/get-field msg HelloReply--message opts)
+      (codec/get-field msg HelloReply--payload opts)
+      ))))
 
 ;; services — pass the service value to your server, the methods to a client
 (def Greeter (rts/service file-descriptor "Greeter"))
