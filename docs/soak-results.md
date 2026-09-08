@@ -75,3 +75,16 @@ the gRPC arms the largest software cost, 20–26%, is protobuf's
 descriptor-driven field access under the clj-protobuf codec, which the
 typed `interop=true` path (protoc-gen-clojure 0.5.1) removes; streaming's
 gain shows as grpc-java shrinking from 8% to 4% of samples.
+**Re-baseline (2026-09-07/08):** measured again with the library's default
+virtual-thread executor (grpc-java will not optimise `:direct` further),
+agent-free images and clj-protobuf's descriptor-compiled codec, the gRPC
+rows were understated: `:direct` streaming reaches **~10,000 msg/s per core
+at 0.085 ms/msg** (was ~8,200 at 0.107) and unary ~4,700 at 0.177 ms, so the
+ladder reads REST h1 ~750 → h2c ~750 → unary ~4,700 (6×) → stream ~10,000
+(13×). The VT default costs 15–27% more CPU per request and ~25% stream
+capacity with p50 roughly double — not the 40–70% the older images showed,
+most of which was a JVMTI agent loaded even when disabled. The compiled
+codec is worth 6–17% CPU (more on streams, more under VT) and takes protobuf
+off the hot path (26% of samples → 2%, syscalls now the top cost at 35%);
+protobuf-java 4.36.1 vs 4.35.1, Netty leak detection and pinning the VT
+scheduler to one carrier are each ≤ 4% or nil.
