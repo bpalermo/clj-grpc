@@ -547,6 +547,152 @@ own P2 acceptance against this arm (30 s steps, 2 workers) is the
 independent cross-check and agrees at every shared rate (16,000 at p50
 1.85 ms there, 1.44 ms here).
 
+## Re-baseline, 2026-09-07/08 — VT default, agent-free images, compiled codec
+
+Phases A–C measured the `:direct` executor on chart 0.2.6, whose JVM images
+loaded the Pyroscope agent unconditionally and whose codec went through
+protobuf-java's `DynamicMessage`. Three things changed after that, and all
+three move the gRPC rows:
+
+- **grpc-java's position on `:direct`.** It will not be optimised further for
+  lack of use, so the ladder's baseline executor is now the library default
+  (virtual threads); `:direct` becomes the tuned variant.
+- **The agent was loaded even when disabled** (`-javaagent` in the image
+  entrypoint). A loaded JVMTI agent turns on the JVM's virtual-thread
+  transition hooks (`JvmtiThreadState` per mount, `VTMS_transition`), which
+  cost only the VT arm. Chart 0.2.8 injects the agent through
+  `JAVA_TOOL_OPTIONS` when `profiling.enabled`, and not otherwise.
+- **clj-protobuf 0.2.0/0.2.1's descriptor-compiled codec** replaced
+  `DynamicMessage` with per-descriptor reader/writer tables over
+  `CodedInput/OutputStream`.
+
+Everything below is the same arm, node, client settings, warmup and step
+length as Phases A–C. Chart 0.2.8 = clj-protobuf 0.2.1 (protobuf-java
+4.35.1); chart 0.2.9 = 0.2.2 (4.36.1); both agent-free.
+
+### VT (library default), unary (`nh-grpc-jvm-grpc-unary-realistic-09080033`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 2.12 | 4626.58 | 4956.09 | 0.0 | 1.689 | 15.7 | 20 | 132 |
+| 1000 | 1000.0 | 2.20 | 24.23 | 71.60 | 0.0 | 0.660 | 0.8 | 20 | 132 |
+| 2000 | 1999.9 | 3.60 | 47.55 | 111.67 | 0.0 | 0.434 | 1.3 | 19 | 133 |
+| 2400 | 2399.7 | 4.25 | 69.19 | 114.94 | 0.0 | 0.372 | 1.0 | 19 | 135 |
+| 2800 | 2799.6 | 5.16 | 113.30 | 270.39 | 0.1 | 0.327 | 1.7 | 23 | 137 |
+| 3200 | 3178.7 | 7.72 | 1841.23 | 4214.88 | 21.1 | 0.295 | 7.1 | 49 | 178 |
+| 3600 | 3598.4 | 7.41 | 107.07 | 222.35 | 0.1 | 0.262 | 3.0 | 50 | 177 |
+| 4000 | 3999.7 | 10.24 | 322.81 | 684.03 | 0.2 | 0.236 | 5.1 | 36 | 178 |
+| 4400 | 4210.0 | 21.85 | 2155.87 | 2943.61 | 188.9 | 0.228 | 12.9 | 38 | 178 |
+| 4800 | 4678.9 | 39.83 | 1647.05 | 1966.60 | 83.9 | 0.208 | 11.9 | 39 | 176 |
+
+### VT (library default), 40 streams (`nh-grpc-jvm-grpc-stream-realistic-09080057`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.74 | 941.88 | 1076.95 | 0.0 | 1.138 | 15.9 | 17 | 130 |
+| 2000 | 1994.7 | 2.16 | 1070.07 | 1191.05 | 0.0 | 0.354 | 13.1 | 17 | 182 |
+| 4000 | 3999.0 | 3.33 | 1080.89 | 1263.67 | 0.0 | 0.210 | 7.1 | 16 | 149 |
+| 6000 | 5999.8 | 6.82 | 528.11 | 620.30 | 0.0 | 0.152 | 5.3 | 18 | 150 |
+| 8000 | 7613.1 | 1078.39 | 2186.15 | 2497.05 | 311.1 | 0.124 | 30.5 | 22 | 176 |
+| 10000 | 7866.0 | 1216.35 | 2209.87 | 2380.53 | 2040.9 | 0.123 | 32.7 | 23 | 179 |
+
+### `:direct`, unary (`nh-grpc-jvm-grpc-unary-realistic-09080112`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.77 | 2222.19 | 4778.89 | 0.0 | 1.143 | 11.9 | 19 | 134 |
+| 1000 | 999.9 | 1.48 | 16.01 | 52.15 | 0.0 | 0.455 | 0.3 | 19 | 135 |
+| 2000 | 1999.9 | 1.89 | 50.53 | 136.36 | 0.0 | 0.341 | 0.2 | 18 | 136 |
+| 2400 | 2399.7 | 2.72 | 1274.61 | 2256.27 | 0.3 | 0.320 | 9.0 | 28 | 153 |
+| 2800 | 2799.9 | 2.52 | 139.11 | 250.74 | 0.1 | 0.267 | 0.3 | 28 | 153 |
+| 3200 | 3199.5 | 3.08 | 345.31 | 810.35 | 0.2 | 0.241 | 1.2 | 28 | 153 |
+| 3600 | 3599.8 | 3.45 | 182.28 | 305.00 | 0.2 | 0.219 | 0.2 | 29 | 153 |
+| 4000 | 3959.4 | 4.67 | 1308.23 | 3401.06 | 40.6 | 0.203 | 0.8 | 30 | 158 |
+| 4400 | 4399.7 | 4.81 | 188.38 | 347.82 | 0.2 | 0.187 | 0.6 | 31 | 158 |
+| 4800 | 4742.0 | 6.53 | 1148.32 | 3069.84 | 57.5 | 0.177 | 1.1 | 31 | 162 |
+
+### `:direct`, 40 streams (`nh-grpc-jvm-grpc-stream-realistic-09080136`)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.53 | 150.01 | 1071.05 | 0.0 | 0.828 | 3.4 | 17 | 127 |
+| 2000 | 1999.8 | 1.37 | 1668.22 | 3581.41 | 0.0 | 0.278 | 3.3 | 18 | 131 |
+| 4000 | 3999.8 | 1.70 | 157.69 | 245.71 | 0.0 | 0.174 | 1.4 | 18 | 137 |
+| 6000 | 5999.4 | 2.62 | 164.15 | 209.89 | 0.0 | 0.127 | 1.0 | 15 | 138 |
+| 8000 | 7989.6 | 5.62 | 387.30 | 923.60 | 1.2 | 0.100 | 0.8 | 18 | 141 |
+| 10000 | 9976.0 | 32.22 | 285.74 | 1777.27 | 21.7 | 0.085 | 0.0 | 18 | 142 |
+
+### What the re-baseline says
+
+| | VT (default) | `:direct` | direct's advantage |
+|---|---|---|---|
+| unary CPU/req at 2,000 | 0.434 ms | 0.341 ms | 27% |
+| unary CPU/req at 4,800 | 0.208 ms | 0.177 ms | 18% |
+| unary p50 at 4,800 | 39.8 ms | 6.5 ms | 6× |
+| stream knee / plateau | 6,000 / ~7,900 msg/s | ≥ 10,000 (still delivering) | ~25% capacity |
+| stream CPU/msg at 6,000 | 0.152 ms | 0.127 ms | 20% |
+| RSS at plateau | ~180 MB | ~142 MB | |
+
+- **The executor gap is real but smaller than the confounded runs showed.**
+  With the agent out of the image it is 15–27% CPU per request on unary and
+  ~25% capacity on streams, not the 40–70% measured on chart 0.2.6. What
+  survives unambiguously is the tail: VT's p50 is roughly double at every
+  matched rate and its throttling an order of magnitude higher near the knee.
+  For a 1-CPU pod with provably non-blocking handlers, `:direct` remains the
+  better setting; for anything that may block, VT is the only safe one and
+  now costs less than the ladder implied.
+- **The ladder's gRPC rows improve.** `:direct` streaming reaches 9,976 msg/s
+  per core at 0.085 ms/msg where Phase C measured ~8,200 at 0.107, and unary
+  holds 4,742 at 0.177 ms where Phase B's plateau was ~4,600 at ~0.20. The
+  protocol and interaction-model conclusions are unchanged in direction and
+  slightly larger in magnitude.
+
+### Compiled codec, measured on the same image (chart 0.2.7, `-Dclj-protobuf.codec=dynamic` as the control)
+
+| arm / mode | step | DynamicMessage | compiled | saving |
+|---|---|---|---|---|
+| `:direct`, stream | 3,500 msg/s | 0.211 ms/msg | 0.184 | 13% |
+| `:direct`, stream | 5,000 msg/s | 0.161 | 0.144 | 11% |
+| `:direct`, unary | 2,000 rps | 0.359 ms/req | 0.338 | 6% |
+| `:direct`, unary | 3,000 rps | 0.300 | 0.273 | 9% |
+| VT, stream | 2,000 msg/s | 0.414 | 0.349 | 16% |
+| VT, stream | 5,000 msg/s | 0.219 | 0.181 | 17% |
+| VT, unary | 2,000 rps | 0.466 ms/req | 0.444 | 5% |
+| VT, unary | 3,000 rps | 0.358 | 0.316 | 12% |
+
+The frame diff is the stronger evidence: on the `:direct` streaming path
+`com.google.protobuf` falls from 26% of samples to 2%, `FieldSet`,
+`SmallSortedMap` and `Descriptors$…getFeatures` disappear entirely, and the
+top cost becomes syscalls at 35%. The codec is no longer the bottleneck
+there — the socket is. On VT the compiled codec also moves the streaming
+knee past 5,000 msg/s where `DynamicMessage` collapsed.
+
+Two smaller results from the same night:
+
+- **protobuf-java 4.36.1 vs 4.35.1** (chart 0.2.9 vs 0.2.8, four runs): no
+  measurable difference. Identical CPU per request on `:direct` at every
+  matched step, 0–5% in 4.36.1's favour on VT. Take the bump for its own
+  sake, not for throughput.
+- **Netty's leak detector** (`io.netty.leakDetection.level=disabled` vs the
+  default): 4% of CPU per request at 1,000 rps, 2% at 2,000, ~1% at the knee,
+  nothing measurable on streams. Worth setting explicitly; not a headline.
+- **Pinning the virtual-thread scheduler to one carrier**
+  (`jdk.virtualThreadScheduler.parallelism=1`): no effect (0.679/0.448/0.315
+  vs 0.700/0.444/0.316 ms/req; streams likewise). The VT cost is per-mount,
+  not carrier contention. Note: Helm's `--set-string` kept only the first
+  flag of the pair, so `maxPoolSize` was left at its default; the scheduler
+  still ran a single carrier.
+
+### Native image, for completeness (chart 0.2.6, VT default, `DynamicMessage`)
+
+Four runs, `soak/results/2026-09-07-native/`: realistic unary knee ~1,000 rps
+and plateau ~1,650–1,700 at ~0.6 ms/req; realistic streaming plateau
+~2,750 msg/s at 0.36 ms/msg; tiny streaming ~10,000–10,300 at 0.097; tiny
+unary knee ~2,800. RSS 39–60 MB below the knee against the JVM's ~140, no
+JIT warmup at any step, and heap growth to ~200 MB at the top tiny-unary
+steps. Roughly half the JVM-VT arm and a third of `:direct` on this hardware;
+it was not re-run on the agent-free charts because it has no JVM and no agent.
+
 ## The ladder — what is on the table for an existing REST service
 
 Per core, 1-CPU pods, one instrument, each rung differing from the one
@@ -558,11 +704,15 @@ requests or messages per second; "cost" is the arm's CPU per request at
 |---|---|---|---|---|---|---|
 | 0 | REST HTTP/1.1 (today) | ~750 rps | 1.59 ms | 134 ms | ~925 | — |
 | 1 | → h2c | ~750 (collapses under overload) | 1.65 ms | 108 ms | ~925 | a config flag on the server; clients must speak h2c |
-| 2 | → gRPC unary | ~4,600 (6×) | 0.56 ms | 13.7 ms | ~10,700 (11×) | new clients, protobuf schema, serialization; API shape unchanged |
-| 3 | → gRPC stream | ~8,200 (11×) | ~0.4 ms\* | ~15 ms\* | > 31,500 (> 34×) | API contract changes: persistent connections, message ordering, backpressure |
+| 2 | → gRPC unary | ~4,700 (6×) | 0.56 ms | 13.7 ms | ~10,700 (11×) | new clients, protobuf schema, serialization; API shape unchanged |
+| 3 | → gRPC stream | ~10,000 (13×) | ~0.4 ms\* | ~15 ms\* | > 31,500 (> 34×) | API contract changes: persistent connections, message ordering, backpressure |
 
 \* streaming at 600 msg/s is below any measured step (400: 0.555 ms, 800:
-0.387 ms, p99 17 / 14 ms); interpolated.
+0.387 ms, p99 17 / 14 ms); interpolated. The gRPC capacities are the
+re-baselined `:direct` numbers from the section above (chart 0.2.8, compiled
+codec, agent-free); Phases B and C measured ~4,600 and ~8,200 on chart 0.2.6.
+With the library's default VT executor the same rows read ~4,700 unary
+(at 18–27% more CPU per request) and ~7,900 streaming.
 
 The money is on rung 2. Rung 1 buys nothing and costs a little; rung 3 buys
 1.8× more on top of rung 2 (3× on tiny) at the price of a different API
