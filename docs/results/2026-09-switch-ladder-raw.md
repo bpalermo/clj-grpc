@@ -838,11 +838,18 @@ overtaken protoc's generated builders for this shape. Where latency at a fixed, 
 rate matters more than capacity, and the pod has cores to spare, the trade inverts.
 
 What this does argue for is the half that is still untouched: the read path. Every
-`proto->X` goes through `codec/get-field` in both arms, `get-field` is 7.4% inclusive in
-the interop arm against 5.0% in the control (it reads reflectively from a generated
-message rather than from slots), and nothing in the generator addresses it today. A
+`proto->X` goes through `codec/get-field` in both arms, and it is 7.4% inclusive in the
+interop arm against 5.0% in the control. Not because it reflects — on the hinted arm
+`get-field` calls `LambdaMetafactory` invokers over the generated `hasX`/`getX`, one per
+field, from a single megamorphic call site — but because a slot read is cheaper than
+that, which clj-protobuf's own corpus had already shown (flat decode 562 ns compiled
+against 816 ns hinted). Nothing in the generator addresses the read side today. A
 typed read path is the request worth making of protoc-gen-clojure — not more typing of
-the write path.
+the write path. Concretely: with `interop=true`, emit `proto->X` as direct `(.getX msg)`
+calls the way `X->proto` already emits `.setX` — guarded by `hasX` for presence fields,
+enums through `getXValue`, collections through `getXList`/`getXMap` — keeping
+`codec/get-field` for the opts route. Byte-neutral by construction, and the plugin's
+existing reflection gate would catch an unhinted call.
 
 Caveats: one run per arm per shape; the interop unary 3,000 step carried a JIT outlier
 (p99 1.07 s, 16 s throttled) and its CPU figure is the least trustworthy number in the
