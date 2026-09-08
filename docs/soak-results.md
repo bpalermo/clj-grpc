@@ -88,3 +88,11 @@ codec is worth 6–17% CPU (more on streams, more under VT) and takes protobuf
 off the hot path (26% of samples → 2%, syscalls now the top cost at 35%);
 protobuf-java 4.36.1 vs 4.35.1, Netty leak detection and pinning the VT
 scheduler to one carrier are each ≤ 4% or nil.
+**Direct linking (2026-09-08):** `-Dclojure.compiler.direct-linking=true` on the
+arm's JVM is worth 5–13% of CPU per request and 3–17% per streamed message, with
+`Var.getRawRoot` falling from 3.2% of samples to 1.1% and p50 improving at every
+matched step — one property on an unchanged image. It works where rules_clj's
+build-time `direct_linking` attribute cannot: clj-protobuf ships to Clojars as
+source, so its codec is compiled by Clojure at load time, and an ahead-of-time
+caller may not link into it at all. The two levers cover disjoint code and
+neither covers both.
