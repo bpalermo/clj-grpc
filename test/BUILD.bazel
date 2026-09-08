@@ -17,6 +17,28 @@ clj_library(
     ],
 )
 
+# The same greeter, generated with protoc-gen-clojure's `interop=true`: the
+# typed arm, whose ->proto fns call protoc's Java setters instead of the
+# codec. Its own source root, and never on the same classpath as
+# //test:fixtures — both provide acme.greeter.greeter, and which one a JVM
+# gets is the whole experiment. //test/proto:greeter_java_proto is a hard dep
+# here, not the optional accelerator it is for the descriptor arm: the typed
+# path names com.acme.greeter.* classes directly, which is also why this
+# cannot be a runtime flag.
+clj_library(
+    name = "fixtures_interop",
+    srcs = glob(["fixtures_interop/**/*.clj"]),
+    namespaces = ["acme.greeter.greeter"],
+    strip_prefix = "test/fixtures_interop",
+    deps = [
+        "//src:clj_grpc",
+        "//test/proto:greeter_java_proto",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
 TEST_DEPS = [
     ":fixtures",
     "//src:clj_grpc",
@@ -159,4 +181,36 @@ clj_test(
     name = "netty_alignment_test",
     ns = "clj-grpc.netty-alignment-test",
     deps = [":netty_alignment_test_lib"],
+)
+
+# The whole e2e suite over the wire on the typed arm — the same namespace as
+# :e2e_test, compiled against fixtures_interop instead of fixtures. The soak
+# image is built from that fixture, so this is what says the arm serves every
+# streaming shape before it reaches a cluster.
+clj_library(
+    name = "e2e_interop_test_lib",
+    srcs = ["clj_grpc/e2e_test.clj"],
+    namespaces = ["clj-grpc.e2e-test"],
+    strip_prefix = "test",
+    deps = [
+        ":fixtures_interop",
+        "//src:clj_grpc",
+        "//test/proto:greeter_java_proto",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:io_grpc_grpc_api",
+        "@deps//:io_grpc_grpc_netty",
+        "@deps//:io_grpc_grpc_protobuf",
+        "@deps//:io_grpc_grpc_services",
+        "@deps//:io_grpc_grpc_stub",
+        "@deps//:io_netty_netty_common",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+clj_test(
+    name = "e2e_interop_test",
+    size = "medium",
+    ns = "clj-grpc.e2e-test",
+    deps = [":e2e_interop_test_lib"],
 )

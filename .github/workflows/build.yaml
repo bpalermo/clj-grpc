@@ -42,6 +42,7 @@ jobs:
           bazel build \
             //bazel/images:grpc_native_image \
             //bazel/images:grpc_jvm_image \
+            //bazel/images:grpc_jvm_interop_image \
             //bazel/images:rest_image
 
       # The soak Helm chart packages the digests of the images built above
@@ -75,9 +76,10 @@ jobs:
               bazel run "//bazel/images:${target}"
             fi
           }
-          push_if_changed grpc_native_push grpc_native_image_manifest.json bpalermo/clj-grpc/soak-grpc-native
-          push_if_changed grpc_jvm_push    grpc_jvm_image_manifest.json    bpalermo/clj-grpc/soak-grpc-jvm
-          push_if_changed rest_push        rest_image_manifest.json        bpalermo/clj-grpc/soak-rest
+          push_if_changed grpc_native_push     grpc_native_image_manifest.json     bpalermo/clj-grpc/soak-grpc-native
+          push_if_changed grpc_jvm_push        grpc_jvm_image_manifest.json        bpalermo/clj-grpc/soak-grpc-jvm
+          push_if_changed grpc_jvm_interop_push grpc_jvm_interop_image_manifest.json bpalermo/clj-grpc/soak-grpc-jvm-interop
+          push_if_changed rest_push           rest_image_manifest.json            bpalermo/clj-grpc/soak-rest
 
       # The chart, with the arm64 digests of the images just pushed baked
       # into its values, published to ghcr as an OCI artifact. Chart version
@@ -97,7 +99,7 @@ jobs:
             echo "### soak image digests (${GITHUB_SHA::12})"
             echo "| image | digest |"
             echo "|---|---|"
-            for m in grpc_native_image grpc_jvm_image rest_image; do
+            for m in grpc_native_image grpc_jvm_image grpc_jvm_interop_image rest_image; do
               echo "| ${m%_image} | sha256:$(sha256sum bazel-bin/bazel/images/${m}_manifest.json | cut -d' ' -f1) |"
             done
           } >> "$GITHUB_STEP_SUMMARY"

@@ -217,3 +217,59 @@ clj_native_binary(
     jar = ":coldstart_server_deploy.jar",
     tags = ["manual"],
 )
+
+# ---------------------------------------------------------------------------
+# The typed-interop soak arm: the same server, the same everything, built
+# against //test:fixtures_interop instead of //test:fixtures. One variable —
+# which generated arm encodes and decodes — so the ladder can price
+# protoc-gen-clojure's `interop=true` against the compiled codec on a real
+# service rather than in criterium.
+#
+# Duplicated targets rather than a select(): the two fixtures provide the same
+# namespace, so they must never meet on one classpath, and a target per arm is
+# how Bazel states that.
+
+clj_library(
+    name = "coldstart_lib_interop",
+    srcs = glob(["clj_grpc/coldstart/*.clj"]),
+    namespaces = [
+        "clj-grpc.coldstart.server",
+        "clj-grpc.coldstart.measure",
+        "clj-grpc.coldstart.steady",
+    ],
+    strip_prefix = "bench",
+    deps = [
+        ":soak_metrics_lib",
+        "//src:clj_grpc",
+        "//test:fixtures_interop",
+        "//test/proto:greeter_java_proto",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+clj_library(
+    name = "stream_driver_lib_interop",
+    srcs = ["clj_grpc/soak/stream_driver.clj"],
+    namespaces = ["clj-grpc.soak.stream-driver"],
+    strip_prefix = "bench",
+    deps = [
+        "//src:clj_grpc",
+        "//test:fixtures_interop",
+        "//test/proto:greeter_java_proto",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+clj_binary(
+    name = "coldstart_server_interop",
+    main_class = "clj_grpc.coldstart.server",
+    tags = ["manual"],
+    deps = [
+        ":coldstart_lib_interop",
+        ":stream_driver_lib_interop",
+    ],
+)
