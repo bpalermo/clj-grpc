@@ -208,6 +208,31 @@ clj_library(
     ],
 )
 
+# The typed arm's guard, asserted: see the namespace docstring. Compiled
+# against fixtures_interop alone, because on the descriptor fixture the same
+# assertions are false by design.
+clj_library(
+    name = "interop_arm_test_lib",
+    srcs = ["clj_grpc/interop_arm_test.clj"],
+    namespaces = ["clj-grpc.interop-arm-test"],
+    strip_prefix = "test",
+    deps = [
+        ":fixtures_interop",
+        "//src:clj_grpc",
+        "//test/proto:greeter_java_proto",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:io_grpc_grpc_api",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+clj_test(
+    name = "interop_arm_test",
+    ns = "clj-grpc.interop-arm-test",
+    deps = [":interop_arm_test_lib"],
+)
+
 clj_test(
     name = "e2e_interop_test",
     size = "medium",
