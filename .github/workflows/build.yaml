@@ -60,6 +60,55 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # A published chart version is a measurement's only durable name: results say
+      # "chart 0.2.9" and a reader has to be able to fetch what that meant. Helm's OCI
+      # push overwrites a tag in place, so before this check every merge to main
+      # republished the chart at whatever version Chart.yaml named — and since the images
+      # it pins are rebuilt each time, a docs-only merge could hand an already published
+      # version a different set of digests. That happened to 0.2.11.
+      #
+      # The rule: a published version may be re-published only if what we would publish
+      # is identical to what is there. Identical is a no-op, so a workflow re-run and a
+      # merge that does not touch the chart both pass; anything that would change a
+      # published version fails and asks for a bump, which is what a changed chart
+      # deserves. Rendered templates are compared rather than the archive, because the
+      # archive carries build metadata that says nothing about what gets deployed.
+      - name: a published chart version must not change
+        id: chart_guard
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -o pipefail
+          version=$(awk '$1 == "version:" { print $2; exit }' charts/clj-grpc-soak/Chart.yaml)
+          chart=oci://ghcr.io/bpalermo/clj-grpc/charts/clj-grpc-soak
+          local_chart=$(bazel cquery --output=files //charts:soak 2>/dev/null | tail -1)
+
+          # A fetch failure is the normal path for a new version, not an error.
+          if ! helm template guard "$chart" --version "$version" > /tmp/published.yaml 2>/dev/null; then
+            echo "chart $version is not published yet"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          helm template guard "$local_chart" > /tmp/local.yaml
+
+          # appVersion is the commit, so it differs on every merge and says nothing about
+          # what would be deployed; it is the one field excluded from the comparison.
+          for f in /tmp/published.yaml /tmp/local.yaml; do
+            sed -i '/helm.sh\/chart:/d; /app.kubernetes.io\/version:/d' "$f"
+          done
+
+          if diff -q /tmp/published.yaml /tmp/local.yaml >/dev/null; then
+            echo "chart $version is already published and renders identically; skipping the push"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "::error::chart $version is already published and this commit would change" \
+               "it. A published version is what results cite, so it must keep meaning one" \
+               "thing. Bump version: in charts/clj-grpc-soak/Chart.yaml." >&2
+          diff /tmp/published.yaml /tmp/local.yaml | head -40 >&2
+          exit 1
+
       - name: push changed images
         if: github.ref == 'refs/heads/main'
         run: |
@@ -81,12 +130,11 @@ jobs:
           push_if_changed grpc_jvm_interop_push grpc_jvm_interop_image_manifest.json bpalermo/clj-grpc/soak-grpc-jvm-interop
           push_if_changed rest_push           rest_image_manifest.json            bpalermo/clj-grpc/soak-rest
 
-      # The chart, with the arm64 digests of the images just pushed baked
-      # into its values, published to ghcr as an OCI artifact. Chart version
-      # is the hand-bumped semver in Chart.yaml; pushing the same version
-      # again overwrites it in place, which is fine for a harness chart.
+      # The chart, with the arm64 digests of the images just pushed baked into its
+      # values, published to ghcr as an OCI artifact. Chart version is the hand-bumped
+      # semver in Chart.yaml, and the check above keeps it meaning one thing forever.
       - name: publish the soak chart
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && steps.chart_guard.outputs.publish != 'false'
         env:
           HELM_REGISTRY_USERNAME: ${{ github.actor }}
           HELM_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
