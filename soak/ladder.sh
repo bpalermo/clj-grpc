@@ -128,7 +128,14 @@ for run in "${runs[@]}"; do
   upgrade --set loadJob.enabled=true "${pairing[@]}" \
           --set-string "loadJob.target=${arm}" --set-string "loadJob.mode=${mode}" --set-string "loadJob.tier=${tier}" \
           --set-string "loadJob.runId=${run_id}" "${ramp_set[@]}" >/dev/null
-  log "job ${job} started; waiting"
+  # What this run measured, recorded where it survives. `log` goes to stderr
+  # and nothing keeps it; the artifacts are the saved job log and tables.md,
+  # so the digest goes in both. Only the native arm needs it: every other
+  # arm's image is pinned by the chart, and the chart version is in the run's
+  # own metadata.
+  provenance=""
+  [ "${arm}" = "grpc-native" ] && provenance="; native image: ${NATIVE_IMAGE:-unset}"
+  log "job ${job} started${provenance}; waiting"
   if ! kubectl --context "${context}" -n "${ns}" wait --for=condition=complete "job/${job}" --timeout=90m; then
     log "job ${job} did not complete cleanly; saving what it logged"
   fi
@@ -140,8 +147,11 @@ for run in "${runs[@]}"; do
   [ "${restarts:-0}" = "0" ] || log "WARNING: ${arm} restarted — this run is void"
 
   upgrade --set loadJob.enabled=false "${pairing[@]}" >/dev/null
-  echo "### ${run} (${job}; restarts=${restarts:-?})" >> "${results_dir}/tables.md"
+  echo "### ${run} (${job}; restarts=${restarts:-?}${provenance})" >> "${results_dir}/tables.md"
   soak/collect.sh "${mode}" < "${results_dir}/${job}.log" >> "${results_dir}/tables.md"
+  # After collect.sh has read the log, not before: the collector parses this
+  # file and should not have to know about a trailer.
+  [ -n "${provenance}" ] && echo "#PROVENANCE${provenance}" >> "${results_dir}/${job}.log"
   echo >> "${results_dir}/tables.md"
 done
 log "ladder complete: ${results_dir}/tables.md"

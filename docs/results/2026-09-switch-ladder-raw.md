@@ -842,9 +842,11 @@ chart version that already exists unless the render is identical, and it refuses
 pushing any image, so a refusal costs a red build and nothing else. The remedy it prints
 is to bump `Chart.yaml`.
 
-**What survived: GraalVM.** The native image is still not reproducible, and the pinned
-GraalVM CE 21.0.2 offers no option for it — nothing matching `reproduc`, `deterministic`
-or `SOURCE_DATE` among its 1345 expert options. With the chart pinning that image, every
+**What survived: GraalVM.** The native image is still not reproducible, and the version
+pinned in `MODULE.bazel` at the time of writing — GraalVM CE 21.0.2, checked 2026-09-08 —
+offers no option for it: nothing matching `reproduc`, `deterministic` or `SOURCE_DATE`
+among its 1345 expert options. That sentence is about one toolchain version and should be
+rechecked whenever it is bumped; later GraalVM releases may well have the option. With the chart pinning that image, every
 graph-invalidating change rewrote the render and forced a chart bump unrelated to the
 change; two bumps (0.2.14, 0.2.16) were spent that way. So **the chart no longer pins the
 native image at all**: `grpc-native` carries an empty image, renders nothing by default,
