@@ -8,15 +8,26 @@ namespace: clj-grpc-soak
 #   rest-h1  → rest-h2c   transport        (same image, same node; only $H2C differs)
 #   rest-h2c → grpc-jvm   protocol         (JSON/Jetty → protobuf/Netty)
 #   grpc-jvm unary → grpc-jvm stream       interaction model (same arm, different Job mode)
-# grpc-native stays deployed for the density/cold-start story but is not a
-# rung of the ladder. `profile: true` marks the arms the Pyroscope Java agent
+# grpc-native is not a rung of the ladder — it exists for the density and
+# cold-start story — and it is the one arm this chart does NOT pin. GraalVM's
+# output is not reproducible, so pinning it made every graph-invalidating
+# change rewrite the chart's render and force a version bump unrelated to the
+# change; and native numbers are comparable only within one digest anyway
+# (docs/results/2026-09-switch-ladder-raw.md), so pinning it in a shared chart
+# implied a stability it never had. An arm with an empty image renders nothing
+# at all — no Deployment, no Service. To run it, pass the digest you mean:
+#
+#   --set-string arms.grpc-native.image=ghcr.io/bpalermo/clj-grpc/soak-grpc-native@sha256:<digest>
+#
+# soak/ladder.sh takes it as NATIVE_IMAGE and refuses a grpc-native run
+# without it. The digest of each build is in build.yaml's digest summary. `profile: true` marks the arms the Pyroscope Java agent
 # is loaded into when profiling.enabled is set — loaded, not merely switched
 # on: the JVM images ship the jar but never -javaagent it themselves, because
 # an attached JVMTI agent taxes every virtual-thread mount and unmount even
 # when its profiler is idle. The native image has no JVM.
 arms:
   grpc-native:
-    image: "{@//bazel/images:grpc_native_push}"
+    image: ""
     probe: grpc
     nodeSelector: main-worker-02
     profile: false

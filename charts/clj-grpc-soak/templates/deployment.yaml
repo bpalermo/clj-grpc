@@ -2,6 +2,8 @@
 # in shape — same budget, same probe posture, same security context — so the
 # only differences a reader ever has to reason about are the values.
 {{- range $name, $arm := .Values.arms }}
+{{- /* No image, no arm: see values.yaml on grpc-native. */}}
+{{- if $arm.image }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -155,4 +157,5 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+{{- end }}
 {{- end }}

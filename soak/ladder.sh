@@ -51,6 +51,14 @@ read -ra extra_set <<<"${LADDER_EXTRA_SET:-}"
 extra_flags=()
 for kv in "${extra_set[@]}"; do extra_flags+=(--set-string "${kv}"); done
 
+# The chart does not pin the native image (GraalVM is not reproducible, and its
+# numbers only compare within one digest), so a native run says which one it
+# means. Carried on EVERY upgrade for the same reason the pairing is: the
+# Job-start upgrade re-applies the chart and would drop it.
+if [ -n "${NATIVE_IMAGE:-}" ]; then
+  extra_flags+=(--set-string "arms.grpc-native.image=${NATIVE_IMAGE}")
+fi
+
 upgrade() { # $@ = --set key=value pairs
   if [ "${chart}" = "bazel" ]; then
     bazel run //charts:soak.upgrade -- --namespace "${ns}" --set "profiling.enabled=${profiling}" "${extra_flags[@]}" "$@"
@@ -73,6 +81,17 @@ wait_ready() { # $1 = deployment
 }
 
 realistic_ramp="${REALISTIC_RAMP:-100 200 300 400 500 600 800 1000 1200 1400 1600}"
+
+# Fail before deploying anything rather than measuring an arm that is not
+# there: an imageless arm renders no Service, and a Job pointed at a missing
+# Service reports zeros on every step instead of failing.
+for run in "${runs[@]}"; do
+  if [ "${run%%:*}" = "grpc-native" ] && [ -z "${NATIVE_IMAGE:-}" ]; then
+    log "run '${run}' targets grpc-native, which this chart does not pin."
+    log "Set NATIVE_IMAGE=ghcr.io/bpalermo/clj-grpc/soak-grpc-native@sha256:<digest> and re-run."
+    exit 2
+  fi
+done
 
 for run in "${runs[@]}"; do
   IFS=: read -r arm mode tier ramp streams <<<"${run}"
@@ -109,7 +128,14 @@ for run in "${runs[@]}"; do
   upgrade --set loadJob.enabled=true "${pairing[@]}" \
           --set-string "loadJob.target=${arm}" --set-string "loadJob.mode=${mode}" --set-string "loadJob.tier=${tier}" \
           --set-string "loadJob.runId=${run_id}" "${ramp_set[@]}" >/dev/null
-  log "job ${job} started; waiting"
+  # What this run measured, recorded where it survives. `log` goes to stderr
+  # and nothing keeps it; the artifacts are the saved job log and tables.md,
+  # so the digest goes in both. Only the native arm needs it: every other
+  # arm's image is pinned by the chart, and the chart version is in the run's
+  # own metadata.
+  provenance=""
+  [ "${arm}" = "grpc-native" ] && provenance="; native image: ${NATIVE_IMAGE:-unset}"
+  log "job ${job} started${provenance}; waiting"
   if ! kubectl --context "${context}" -n "${ns}" wait --for=condition=complete "job/${job}" --timeout=90m; then
     log "job ${job} did not complete cleanly; saving what it logged"
   fi
@@ -121,8 +147,11 @@ for run in "${runs[@]}"; do
   [ "${restarts:-0}" = "0" ] || log "WARNING: ${arm} restarted — this run is void"
 
   upgrade --set loadJob.enabled=false "${pairing[@]}" >/dev/null
-  echo "### ${run} (${job}; restarts=${restarts:-?})" >> "${results_dir}/tables.md"
+  echo "### ${run} (${job}; restarts=${restarts:-?}${provenance})" >> "${results_dir}/tables.md"
   soak/collect.sh "${mode}" < "${results_dir}/${job}.log" >> "${results_dir}/tables.md"
+  # After collect.sh has read the log, not before: the collector parses this
+  # file and should not have to know about a trailer.
+  [ -n "${provenance}" ] && echo "#PROVENANCE${provenance}" >> "${results_dir}/${job}.log"
   echo >> "${results_dir}/tables.md"
 done
 log "ladder complete: ${results_dir}/tables.md"
