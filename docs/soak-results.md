@@ -83,11 +83,12 @@ frames show why: the typed path moves conversion work out of the codec into prot
 generated accessors almost one for one (streaming self time 9.4% → 3.2% codec,
 3.0% → 9.1% protobuf-java, sum unchanged). So interop is a latency-for-CPU trade on
 unary and a free latency win on streaming, not the ceiling the codec was aimed at.
-**Two cores (2026-09-09):** capacity follows CONNECTIONS, not cores. `:direct`
+**Two cores (2026-09-09):** capacity follows CONNECTIONS, not cores — up to the core
+count; see the connection sweep entry below for where that stops. `:direct`
 streaming sits flat at 0.78–0.90 cores across the whole ramp on a two-core pod —
 the second core idle — because a stream's connection binds to one event loop and
-`:direct` runs the handler on it; unary, which the harness gives eight connections,
-reaches 1.33. So a client holding one multiplexed connection to a four-core pod uses
+`:direct` runs the handler on it; unary, whose pool grows to eight connections under
+load, reaches 1.33. So a client holding one multiplexed connection to a four-core pod uses
 one core of it. Virtual threads do spread a single connection (1.12 → 1.57 cores) and
 still lose, spending 1.57 cores for 14,438 msg/s where `:direct` spends 0.90 for
 15,250; the executor gap widens with cores (44–80% more CPU) rather than closing.
@@ -114,3 +115,18 @@ build-time `direct_linking` attribute cannot: clj-protobuf ships to Clojars as
 source, so its codec is compiled by Clojure at load time, and an ahead-of-time
 caller may not link into it at all. The two levers cover disjoint code and
 neither covers both.
+
+**Connection sweep (2026-09-09):** the deliberate experiment the Two cores entry called for,
+now that chart 0.2.19 lets `--max-concurrent-streams` reach the streaming branch. One
+`:direct` arm on two cores, 40 streams, `--concurrency 1`, only the connection count
+moving (1/2/4/8, asserted from `upstream_cx_total`). **One connection is flat at
+0.79-0.92 cores however hard it is pushed** — the second core simply cannot be reached.
+**Capacity then saturates at two connections, the core count exactly:** 15,294 msg/s at
+0.92 cores with one, 22,866 at 1.49 with two, and then nothing more — 4 and 8 connections
+deliver within 2% of what 2 delivers while burning 13% more CPU (1.67-1.69 cores). So
+connections below the core count strand cores and connections above it are pure overhead;
+two connections is both the ceiling and the most efficient way to reach it (15,390 msg/s
+per core against 13,340 at four). The driver held 0.44-0.61 of its one core throughout,
+so no step was client-limited. Caveat for every ramp in this doc: the first step after
+warmup under-reads by ~10% (same arm, same connections, 19,598 msg/s when reached through
+a ramp vs 17,731 as a ramp's first step).

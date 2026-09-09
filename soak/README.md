@@ -81,6 +81,20 @@ the JIT), scales the sibling REST arm to zero, saves each Job's log, and
 appends the collected table to `tables.md`. Any arm restart during a run
 voids that run.
 
+Two readings guard against mistaking the harness for the server. The `conns`
+column is the run's own `upstream_cx_total`: capacity depends on how many
+connections the client actually opened, and that is asserted, never computed
+from the flags. And when a ramp's top matters, sample the driver too —
+
+```sh
+soak/client-cpu.sh /tmp/client.tsv &            # alongside the ladder
+soak/client-cpu.sh --report job.log /tmp/client.tsv
+```
+
+— because a driver that has run out of CPU produces a plateau that looks
+exactly like the server's. `spin` busy-waits, so the number to read is
+throttling rather than usage.
+
 Ramps: unary tiny 200→2,400 req/s in 12 × 110 s steps (August's shape);
 unary realistic 100→1,600; streams 400→4,800 msg/s at 20 streams and
 4,000→16,000 at 40, as in August.
