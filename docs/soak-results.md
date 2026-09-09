@@ -83,6 +83,16 @@ frames show why: the typed path moves conversion work out of the codec into prot
 generated accessors almost one for one (streaming self time 9.4% → 3.2% codec,
 3.0% → 9.1% protobuf-java, sum unchanged). So interop is a latency-for-CPU trade on
 unary and a free latency win on streaming, not the ceiling the codec was aimed at.
+**Two cores (2026-09-09):** capacity follows CONNECTIONS, not cores. `:direct`
+streaming sits flat at 0.78–0.90 cores across the whole ramp on a two-core pod —
+the second core idle — because a stream's connection binds to one event loop and
+`:direct` runs the handler on it; unary, which the harness gives eight connections,
+reaches 1.33. So a client holding one multiplexed connection to a four-core pod uses
+one core of it. Virtual threads do spread a single connection (1.12 → 1.57 cores) and
+still lose, spending 1.57 cores for 14,438 msg/s where `:direct` spends 0.90 for
+15,250; the executor gap widens with cores (44–80% more CPU) rather than closing.
+Scaling is 1.2–1.6x, not 2x, and for streaming the gain is GC moving off the request
+path rather than parallel service.
 **Re-baseline (2026-09-07/08):** measured again with the library's default
 virtual-thread executor (grpc-java will not optimise `:direct` further),
 agent-free images and clj-protobuf's descriptor-compiled codec, the gRPC
