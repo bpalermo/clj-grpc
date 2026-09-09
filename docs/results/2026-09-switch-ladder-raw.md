@@ -991,6 +991,129 @@ a latency-sensitive service with cores to spare takes interop — and the two ar
 within a few percent of each other rather than a factor apart, which is the real change
 since 0.5.1.
 
+## Two cores, 2026-09-09 — capacity follows connections, not cores
+
+Every number above this line is one core. That is the right shape for comparing arms
+and the wrong one for sizing a pod, so this section asks the question the plan never
+did: what happens with two.
+
+Chart 0.2.18 with `resources.cpu=2`, the arm moved to worker-02 (the only node with
+2 CPU free once the native arm stopped rendering) and the REST arm scaled away, since
+the chart applies `resources` globally and a 2-CPU REST pod would not fit on worker-04.
+Driver unchanged on worker-05. Both executors, unary and 40-stream, profiled.
+
+### unary, realistic — `:direct` then virtual threads
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.89 | 18.91 | 376.86 | 0.0 | 1.366 | 0.1 | 31 | 191 |
+| 2000 | 2000.0 | 1.55 | 24.85 | 95.83 | 0.0 | 0.339 | 0.0 | 28 | 192 |
+| 4000 | 3999.8 | 2.80 | 211.72 | 522.78 | 0.1 | 0.214 | 0.1 | 48 | 219 |
+| 6000 | 5999.1 | 5.48 | 249.28 | 449.92 | 0.8 | 0.148 | 0.0 | 48 | 238 |
+| 8000 | 7951.3 | 29.15 | 352.57 | 799.74 | 39.2 | 0.128 | 0.2 | 80 | 264 |
+| 10000 | 9725.8 | 83.30 | 676.89 | 1099.89 | 263.9 | 0.137 | 0.3 | 93 | 326 |
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 2.22 | 335.63 | 608.50 | 0.0 | 1.952 | 0.4 | 31 | 202 |
+| 2000 | 1999.9 | 2.69 | 28.29 | 86.17 | 0.0 | 0.532 | 0.0 | 39 | 203 |
+| 4000 | 3999.3 | 5.31 | 271.58 | 503.63 | 0.4 | 0.313 | 0.0 | 42 | 254 |
+| 6000 | 5876.5 | 13.20 | 1141.51 | 1564.80 | 120.7 | 0.254 | 1.9 | 72 | 355 |
+| 8000 | 7958.1 | 31.98 | 584.55 | 879.56 | 40.8 | 0.197 | 0.6 | 76 | 357 |
+| 10000 | 9348.7 | 324.21 | 802.78 | 1005.16 | 626.3 | 0.194 | 4.8 | 76 | 401 |
+
+### 40 streams, realistic — `:direct` then virtual threads
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.55 | 7.82 | 157.87 | 0.0 | 0.922 | 0.1 | 31 | 196 |
+| 4000 | 3999.0 | 1.40 | 258.59 | 586.09 | 0.0 | 0.194 | 0.2 | 36 | 203 |
+| 8000 | 7999.3 | 2.20 | 145.32 | 387.87 | 0.2 | 0.101 | 0.0 | 38 | 223 |
+| 12000 | 11885.6 | 5.77 | 385.60 | 3302.49 | 113.8 | 0.075 | 0.0 | 42 | 299 |
+| 16000 | 14737.9 | 168.42 | 1431.70 | 5746.20 | 1221.2 | 0.060 | 0.0 | 47 | 303 |
+| 20000 | 15249.5 | 237.04 | 1913.19 | 17514.36 | 4668.1 | 0.059 | 0.0 | 83 | 304 |
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.83 | 10.27 | 37.51 | 0.0 | 1.250 | 0.3 | 31 | 195 |
+| 4000 | 3995.2 | 2.55 | 2462.71 | 2656.17 | 4.6 | 0.280 | 1.5 | 27 | 259 |
+| 8000 | 7997.5 | 5.68 | 425.16 | 567.87 | 0.0 | 0.151 | 0.1 | 27 | 272 |
+| 12000 | 11552.4 | 163.10 | 1247.67 | 1462.70 | 377.1 | 0.120 | 0.7 | 36 | 355 |
+| 16000 | 13898.6 | 513.67 | 1213.07 | 1303.90 | 2027.0 | 0.109 | 2.2 | 37 | 370 |
+| 20000 | 14438.1 | 647.20 | 1211.89 | 1319.04 | 5457.7 | 0.109 | 2.1 | 49 | 371 |
+
+### The finding: the second core is not used by a single connection
+
+`cpu ms/req x delivered/s` is cores consumed. Reading that rather than throughput is
+what makes the mechanism visible:
+
+| offered | `:direct` unary (8 conns) | VT unary (8 conns) | `:direct` stream (1 conn) | VT stream (1 conn) |
+|---|---|---|---|---|
+| low | 0.86 cores | 1.25 | 0.78 | 1.12 |
+| mid | 1.02 | 1.57 | 0.89 | 1.39 |
+| top | **1.33** | **1.81** | **0.90** | **1.57** |
+
+`:direct` streaming is flat at 0.78–0.90 cores across the whole ramp, on a two-core pod,
+no matter what is offered. The second core is idle. Unary on the same executor reaches
+1.33.
+
+The connection counts, read from `upstream_cx_total` rather than from the flags, say why —
+and they make the case within a single run rather than across two:
+
+| `:direct` unary step | connections opened | cores |
+|---|---|---|
+| 2,000 rps | 1 | 0.68 |
+| 6,000 rps | 5 | 0.89 |
+| 10,000 rps | 8 | 1.33 |
+
+Unary's pool grows with load because `run.sh` passes `--max-concurrent-streams 512`
+against 4,096 in flight, so the client opens another connection every 512 outstanding
+requests. The streaming branch passed no such flag, leaving it at 2,147,483,647, so all
+40 streams rode one connection at every rate — and `:direct` never exceeded 0.90 cores.
+Both runs used `--concurrency 1`, one client worker, so this is not the client's worker
+count showing through.
+
+**A connection binds to one event loop, and under `:direct` that loop also runs the
+handler, so one connection means one core.** A client holding a single multiplexed
+connection to a four-core pod will use one core of it. Capacity scales with connections,
+not with cores — and this is a property of connections rather than of streaming, since
+the unary arm shows the same relationship inside one run as its pool grows.
+
+Virtual threads do spread a single connection — 1.12 to 1.57 cores — because handlers
+run off the loop. And it still loses: VT spends 1.57 cores to deliver 14,438 msg/s where
+`:direct` spends 0.90 to deliver 15,250. The extra core goes into mount and unmount
+overhead rather than into work, which is the same conclusion the one-core runs reached,
+now with the mechanism visible.
+
+### What two cores changed, and what it did not
+
+- **Scaling is sublinear**: unary 4,700 → ~6,000 rps clean (knee 6,000 → 8,000),
+  streaming ~10,000 → ~11,900 msg/s. Roughly 1.2–1.6x, not 2x. For streaming the extra
+  throughput is GC and JIT moving off the request path onto the idle core, not parallel
+  request service — which the cores-consumed column shows directly.
+- **The executor gap widens with cores** rather than closing: VT costs 44–72% more CPU
+  per request on unary and 45–80% on streaming at two cores, against 15–27% at one. Each
+  request still pays a mount and unmount however many carriers exist.
+- **Throttling stops being the limit.** At one core, throttled seconds was the first
+  thing to move; here it is ~0 everywhere and the knee is latency growth instead.
+
+### What this section does not establish
+
+The deliberate connection experiment did not run. `run.sh` never passed
+`--max-concurrent-streams` in `grpc-stream` mode, so the setting was inert and the
+"4 connections" configuration opened one, exactly like its control
+(`upstream_cx_total=1` in both). Fixed in chart 0.2.19; the 1/2/4-connection ramp that
+would measure how cleanly capacity tracks connection count is still to run, driven by
+`--max-concurrent-streams` rather than `--connections` (which is a circuit breaker:
+exceeding it produces `upstream_cx_overflow` rather than more connections).
+
+The rule above therefore rests on observed connection counts and their correlation with
+cores consumed — including within the unary run — rather than on a deliberate sweep. One
+caveat carried from the fork session: connections are per client worker, so the count is
+`concurrency × ceil((streams / concurrency) / mcs)`, and the effective per-connection
+limit is the lower of the client's `mcs` and the server's advertised
+`SETTINGS_MAX_CONCURRENT_STREAMS`. Assert on `upstream_cx_total`; do not compute it.
+
 ## The ladder — what is on the table for an existing REST service
 
 Per core, 1-CPU pods, one instrument, each rung differing from the one
