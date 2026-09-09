@@ -993,6 +993,12 @@ since 0.5.1.
 
 ## Two cores, 2026-09-09 — capacity follows connections, not cores
 
+> Superseded in part by the connection sweep below, which ran the deliberate experiment
+> this section could not. The single-connection cap holds exactly as stated. The general
+> rule does not: on this arm the climb stopped at two connections, with half a core still
+> idle, and further connections cost CPU for no throughput. What stops it there is not
+> established — see that section.
+
 Every number above this line is one core. That is the right shape for comparing arms
 and the wrong one for sizing a pod, so this section asks the question the plan never
 did: what happens with two.
@@ -1075,9 +1081,11 @@ count showing through.
 
 **A connection binds to one event loop, and under `:direct` that loop also runs the
 handler, so one connection means one core.** A client holding a single multiplexed
-connection to a four-core pod will use one core of it. Capacity scales with connections,
-not with cores — and this is a property of connections rather than of streaming, since
-the unary arm shows the same relationship inside one run as its pool grows.
+connection to a four-core pod will use one core of it. Capacity scales with connections
+rather than with cores — and this is a property of connections rather than of streaming,
+since the unary arm shows the same relationship inside one run as its pool grows. (The
+sweep below bounds that scaling: on this arm it stops at two connections, for reasons the
+sweep could not pin down.)
 
 Virtual threads do spread a single connection — 1.12 to 1.57 cores — because handlers
 run off the loop. And it still loses: VT spends 1.57 cores to deliver 14,438 msg/s where
@@ -1099,13 +1107,13 @@ now with the mechanism visible.
 
 ### What this section does not establish
 
-The deliberate connection experiment did not run. `run.sh` never passed
+The deliberate connection experiment did not run in this campaign. `run.sh` never passed
 `--max-concurrent-streams` in `grpc-stream` mode, so the setting was inert and the
 "4 connections" configuration opened one, exactly like its control
-(`upstream_cx_total=1` in both). Fixed in chart 0.2.19; the 1/2/4-connection ramp that
-would measure how cleanly capacity tracks connection count is still to run, driven by
-`--max-concurrent-streams` rather than `--connections` (which is a circuit breaker:
-exceeding it produces `upstream_cx_overflow` rather than more connections).
+(`upstream_cx_total=1` in both). Fixed in chart 0.2.19, and the 1/2/4/8-connection sweep
+ran the same day — see the next section — driven by `--max-concurrent-streams` rather
+than `--connections` (which is a circuit breaker: exceeding it produces
+`upstream_cx_overflow` rather than more connections).
 
 The rule above therefore rests on observed connection counts and their correlation with
 cores consumed — including within the unary run — rather than on a deliberate sweep. One
@@ -1113,6 +1121,133 @@ caveat carried from the fork session: connections are per client worker, so the 
 `concurrency × ceil((streams / concurrency) / mcs)`, and the effective per-connection
 limit is the lower of the client's `mcs` and the server's advertised
 `SETTINGS_MAX_CONCURRENT_STREAMS`. Assert on `upstream_cx_total`; do not compute it.
+
+## The connection sweep, 2026-09-09 — connections carry capacity, up to a ceiling that is not the cores
+
+The section above ended by saying the deliberate connection experiment had not run: the
+knob was inert, so the rule rested on connection counts observed after the fact and their
+correlation with cores consumed. Chart 0.2.19 made `--max-concurrent-streams` reach the
+`grpc-stream` branch, so the experiment ran. It confirms the sharp half of the rule, and
+puts a boundary on the general half that the correlation could not have shown.
+
+**Setup.** One arm — `grpc-jvm`, `EXECUTOR=direct`, 2 CPU / 2 GiB Guaranteed, worker-02,
+REST scaled to 0 — realistic tier, 40 streams, `--concurrency 1` on every run, profiling
+on exactly as in the two-core campaign so the agent is a constant and not a variable.
+The single lever is `--max-concurrent-streams`, which decides how many connections carry
+those 40 streams: 40 → 1, 20 → 2, 10 → 4, 5 → 8. Nothing client-side moves. The `conns`
+column is `upstream_cx_total` read back from the run (`soak/collect.sh`, PR #73), asserted
+rather than computed, and it reads 1, 2, 4 and 8 on every step of every run — the flag did
+what it was set to do.
+
+**The harness reproduces.** `conn1` carries one connection for the same reason the
+two-core campaign's `direct-stream` did (there, 40 streams under an unbounded default;
+here, under an explicit 40), and the two runs — a day and a chart version apart — deliver
+15,294 and 15,250 msg/s at the top of the ramp. 0.3% apart, so the rest of the sweep can
+be read against it.
+
+### Cores consumed at matched offered load
+
+`cpu ms/req × delivered/s`, the same reading that made the mechanism visible before:
+
+| offered | 1 conn | 2 conns | 4 conns | 8 conns |
+|---|---|---|---|---|
+| 4,000 | 0.86 | 0.80 | 0.80 | 0.90 |
+| 8,000 | 0.79 | 0.94 | 1.03 | 1.10 |
+| 12,000 | 0.88 | 1.10 | 1.22 | 1.27 |
+| 16,000 | 0.90 | 1.31 | 1.42 | 1.45 |
+| 20,000 | **0.92** | 1.39 | 1.57 | 1.48 |
+
+**One connection is flat at 0.79–0.92 cores however hard it is pushed.** The pod has two.
+That is the previous section's claim measured directly instead of inferred, and it is the
+part of the rule that holds without qualification: a connection binds to one event loop,
+`:direct` runs the handler on that loop, so one connection means one core — a client
+holding a single multiplexed connection to a four-core pod will use one core of it.
+
+### Where it stops
+
+The 4,000–20,000 ramp finds the knee at one connection and runs out of room above it, so
+every other count was re-run at 20,000–36,000. Saturated throughput is the highest rate
+the arm actually delivered anywhere in its runs:
+
+| conns | saturated msg/s | cores | msg/s per core |
+|---|---|---|---|
+| 1 | 15,294 | 0.92 | 16,660 |
+| 2 | **22,866** | **1.49** | 15,390 |
+| 4 | 22,591 | 1.69 | 13,340 |
+| 8 | 23,133 | 1.67 | 13,890 |
+
+**Capacity stops climbing at two connections.** The second connection is worth +50%
+throughput. The third through eighth are worth nothing: 4 and 8 connections deliver within
+2% of what 2 delivers, while consuming 13% more CPU to do it (1.67–1.69 cores against
+1.49). Two connections is also the cheapest way to reach the ceiling, at 15,390 msg/s per
+core.
+
+So the rule the previous section stated as "capacity follows connections, not cores" is
+half right, and the missing half matters: **more connections stop helping well before the
+pod runs out of anything.** Connections past that point are not a smaller win — they are
+pure overhead, and on this arm they are worse than neutral, since they push it into
+throttling for no throughput.
+
+**The ceiling is not a CPU ceiling, and this section does not explain it.** At its best
+step the two-connection arm delivers 22,866 msg/s on 1.49 of its 2 cores with 0.1 s
+throttled in 110 s — half a core idle, no quota pressure — and its two top steps are
+throttled 0.0 s while still not exceeding ~22,600. The 4- and 8-connection arms are
+throttled 3.6–6.4 s in every top step and land in the same place. So the coincidence
+between "two connections" and "two cores" is exactly that on this evidence: something caps
+this arm near 23,000 msg/s that is not the core count, not the CPU quota, and not the
+driver. Per event loop it is ~0.75 core, below even the 0.92 a single loop reached, which
+argues against a per-loop saturation story too.
+
+What the evidence does place is the side. Nighthawk's `stream_deferred` rises to
+5,000–13,000/s at those steps, so the client is being back-pressured rather than failing to
+schedule — the limit sits on the server side of the connection. Flow-control windows, the
+40 × 256 in-flight budget and a contended lock are all live candidates, and separating
+them needs a profile of the ceiling steps, which this campaign did not take.
+
+The knee agrees on where the step is. One connection stops delivering the offered load
+between 12,000 and 16,000; every other count holds it to 16,000 and breaks between 16,000
+and 20,000, regardless of whether it has 2, 4 or 8 connections — the jump happens once,
+between one connection and two, and nothing after that moves it.
+
+**No step was client-limited.** The driver's own cgroup counters, sampled every 10 s and
+aligned to each step's window, put it at 0.49–0.64 cores of its Guaranteed 1 CPU with
+throttling under 0.45 s per 110 s step, at every connection count. A client-side plateau would have shown here as the driver
+saturating; it did not.
+
+### Reading caveats
+
+- **The first step of a ramp under-reads by ~10%.** `conn4` delivered 19,598 msg/s at
+  20,000 offered when it arrived there through 4,000→16,000, and 17,731 when 20,000 was
+  the first step after the 200-rps warmup — same arm, same four connections, four times
+  the server-side throttling. Five minutes at 200 rps does not warm a JVM for 20,000.
+  Take plateaus from the upper steps of a ramp, never from its first.
+- **These are saturated throughputs, not clean plateaus.** Under this doc's plateau rule
+  (knee/s below 0.1% of offered) all four runs plateau at 12,000: every connection count
+  delivers the offered load cleanly that far, and they separate only past the knee. The
+  ramp's 4,000-rps resolution is too coarse to place the clean plateaus apart, so the
+  table above deliberately reports what the arm delivered under saturation instead.
+- **The ceiling is this arm's, and unexplained.** Two connections stopped the climb here
+  with half a core spare; nothing in this sweep says the stopping point is the core count
+  rather than a coincidence, and nothing says where a four- or eight-core arm would stop.
+  Treat "two connections was enough" as a measurement of this pod, not a sizing rule.
+- **The concurrency control did not run.** Connections can be added two ways — more
+  streams per client worker (this sweep) or more client workers — and running both would
+  separate "a connection" from "a client event loop". `--concurrency 2` with the spin idle
+  strategy needs two Guaranteed cores for the Job, and neither candidate node had them
+  free (worker-05 at 3,375m of 3,950m requested, worker-04 at 2,185m). The evidence that
+  would have been at issue — client CPU — was flat across all four connection counts.
+
+### One fork detail, verified rather than assumed
+
+`run.sh` skips its per-worker rate division for `grpc-stream` on the strength of a comment
+saying `--rps` is aggregate there. It is: on `p2-grpc-stream`, `process_impl.cc` logs
+"Global targets: {streams} gRPC bidi streams and {rps} messages per second" for stream
+mode against `connections × concurrency` and `rps × concurrency` for every other mode, and
+the client-worker path divides both `options_.streams() / concurrency` and
+`requestsPerSecond() / concurrency` behind a stream-mode guard. Both `--streams` and
+`--rps` are global in that mode; `--concurrency` would not have changed the offered load.
+
+Logs and `tables.md` in `soak/results/2026-09-09-connections/`.
 
 ## The ladder — what is on the table for an existing REST service
 
