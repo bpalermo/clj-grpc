@@ -110,16 +110,17 @@ shrinking from 8% to 4% of samples.
 
 ### Open
 
-Why a two-connection arm stops at ~23,000 msg/s with half a core idle and no
-quota pressure. One candidate has since been measured and *partly* answers it:
-a process-wide monitor on clj-protobuf's compiled encode path is worth ~10%
-(see the monitor entry below), but an interop arm that never touches it
-plateaus at ~25,000 with half a core idle just the same. So the ceiling itself
-is still unexplained and sits upstream of the codec. `stream_deferred` at
-5,000–13,000/s puts it on the server side of the connection; flow-control
-windows and the 40 × 256 in-flight budget remain candidates, and separating
-them needs a wall-clock profile of the ceiling steps, which no run has taken —
-CPU profiles cannot see a parked thread.
+Why a gRPC streaming arm stops at ~25,000 msg/s with half a core idle and no
+quota pressure. Four things are now ruled out rather than suspected: the codec
+(an interop arm touching neither of clj-protobuf's monitors hits the same wall),
+the connection count (2, 4 and 8 connections land within 5% of each other), CPU
+saturation (cores sit at 1.47–1.64 of 2.0), and the driver (0.60–0.66 of its
+single core throughout). What remains: HTTP/2 flow-control windows — the server
+never sets `flowControlWindow`, so grpc-java's default and BDP auto-tuning
+apply — the 40 × 256 in-flight budget, a serialization point inside the
+transport, or a wakeup path. Separating those needs a wall-clock profile;
+`process_cpu` is the only profile type Pyroscope holds for these arms and it
+cannot see a parked thread.
 
 ### The record
 
@@ -217,3 +218,19 @@ half a core idle while touching neither monitor. Measured against clj-protobuf
 0.2.2; the fix is upstream as `3ce5ed7` (clj-protobuf #40) but was unreleased
 at the time, so this is a before-number and the gap should shrink toward the
 1-4% the 1-CPU runs showed once 0.2.5 ships.
+
+**The ceiling is global (2026-09-09):** the monitor A/B left the interop arm
+plateauing at ~25,000 msg/s on 1.47 of 2 cores while touching neither
+`synchronizedMap`, so the monitor was a cap and not the ceiling. Tested by
+transposing the sign-flip instrument from cores to connections — cores are the
+cleaner variable and no node here has three free for one arm; the idle
+half-core is what makes connections discriminate, since a per-connection bound
+would climb with spare CPU available and a global one would not. **Flat: peaks
+of 25,287 / 25,428 / 24,224 msg/s at 2 / 4 / 8 connections**, a spread of −4.2%
+to +0.6%, at 1.47 / 1.63 / 1.60 cores, driver at 0.60–0.66 of one core
+throughout. Predicted in advance (flat at ~25,000, cores 1.6–1.7) with
+thresholds fixed before the runs, including the one that matters most — cores
+above 1.85 would have read as plain CPU saturation rather than a serialization
+point. So the compiled arm's flatness across connections was never the monitor;
+the monitor only set the level ~10% lower. Adding connections past two is worse
+than useless: 2 → 4 bought 0.6% for 11% more CPU, 4 → 8 lost 4%.

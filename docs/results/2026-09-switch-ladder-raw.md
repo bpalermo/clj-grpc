@@ -1352,6 +1352,98 @@ frame table, not the ramp alone.
 Logs, tables and banked flamebearers (both arms and the driver, via
 `soak/save-flames.sh`) in `soak/results/2026-09-09-lock-ab/`.
 
+## The ceiling is global, 2026-09-09 — invariant to connections, with a core to spare
+
+The monitor A/B ended with the interop arm plateauing at ~25,000 msg/s on 1.47
+of 2 cores while touching neither of clj-protobuf's `synchronizedMap`s. So the
+monitor was a cap and not the ceiling, and the ceiling was unexplained. This
+run narrows what it can be.
+
+### Instrument: vary what the explanation needs
+
+The clj-protobuf session made the argument that produced the A/B's cleanest
+evidence and it generalises: **to test whether something is a serialization
+point, vary the condition it requires rather than hunt for its trace.** The sign
+flip that convicted the monitor — 3–8% dearer at one core, 10–14% cheaper at
+two, on unchanged images — worked because contention cannot exist at one core.
+No profile was needed, and an itimer profile could not have shown it anyway,
+because a parked thread is off-CPU.
+
+Cores would be the cleanest variable here and are not available: no node on
+this cluster has three cores free for one arm, and worker-02's remainder
+belongs to another project. Connections are the variable that is. They are a
+weaker instrument — varying connections at fixed cores does not change how much
+parallelism *can* exist — but the idle half-core rescues them. With spare CPU
+available, a **per-connection** bound would let throughput climb as connections
+are added; a **global** serialization point would not. So this discriminates
+along "global vs per-connection" rather than "contended vs not".
+
+### Predicted in advance, with thresholds
+
+Recorded before either run finished, in `PREDICTION.md` in the results
+directory, because the flat branch is the one that tempts a rationalisation:
+
+- Predicted: **flat at ~25,000, cores rising to ~1.6–1.7.**
+- Under 5% change reads as flat, over 10% a climb, 5–10% buys a third count.
+- **Flat is not automatically clean either**, and the discriminator is the cores
+  column: flat throughput with cores stuck near 1.5–1.7 is a serialization
+  point, while flat throughput with cores climbing to 1.9–2.0 is plain CPU
+  saturation with no mystery to chase. **Cores above 1.85 reads as saturation
+  regardless of throughput.**
+
+### Result
+
+Interop arm, `:direct`, 2 CPU, chart 0.2.19, 40 streams, `--concurrency 1`,
+connections driven by `--max-concurrent-streams` — delivered msg/s (cores):
+
+| offered | 2 conn | 4 conn | 8 conn |
+|---|---|---|---|
+| 20,000 | 18,793 (1.45) | 18,475 (1.57) | 18,092 (1.54) |
+| 24,000 | 22,741 (1.41) | 21,958 (1.52) | 22,145 (1.51) |
+| 28,000 | **25,287** (1.47) | 24,252 (1.60) | 24,224 (1.60) |
+| 32,000 | 24,386 (1.39) | 24,823 (1.64) | 23,681 (1.54) |
+| 36,000 | 24,161 (1.38) | **25,428** (1.63) | 23,694 (1.52) |
+
+Peaks: 25,287 / 25,428 / 24,224 — a spread of **−4.2% to +0.6%**, inside the
+5% flat band. Cores 1.47 / 1.63 / 1.60, all below the 1.85 saturation line.
+The driver held 0.60–0.66 of its single core with sub-second throttling at
+every step, so nothing here is client-limited.
+
+The prediction was flat at ~25,000 with cores at 1.6–1.7; the measurement is
+24,224–25,428 at 1.47–1.64.
+
+### What this establishes
+
+**The ceiling is global and upstream of the codec.** An arm that touches neither
+monitor shows the same connection-invariant flatness the compiled arm showed
+(22,866 / 22,591 / 23,133 at 2/4/8), while leaving half a core idle and taking
+no meaningful throttling. So the compiled arm's flatness was never the monitor
+— the monitor only set the level, ~10% lower. Whatever caps this arm is not the
+codec, not the connection count, and not the CPU quota.
+
+Adding connections past two is worse than useless on this pod: 2 → 4 bought
+0.6% for 11% more CPU and pushed throttling from ~0 to 3–5 s per step; 4 → 8
+lost 4%. That is the same shape the connection sweep found on the compiled arm,
+now reproduced on an arm with a different codec.
+
+### What it does not establish
+
+**Nothing about what the monitor was worth.** That is the after-run on the
+*compiled* arm against clj-protobuf 0.2.5, whose interpretive bands are fixed
+in advance in `soak/results/2026-09-10-after/PREDICTION.md`. These are two
+separate questions and this run answers only the first.
+
+It also does not name the mechanism. What is left, having ruled out the codec,
+the connection count, CPU saturation and the driver: HTTP/2 flow-control
+windows (the server never sets `flowControlWindow`, so grpc-java's default and
+its BDP auto-tuning apply), the 40 × 256 in-flight budget, a serialization
+point inside the transport, or a wakeup path. Separating those needs the
+wall-clock profile — `process_cpu` is the only profile type Pyroscope holds for
+these arms, and it cannot see a parked thread.
+
+Logs, tables, `PREDICTION.md` and banked flamebearers for both arms and the
+driver in `soak/results/2026-09-09-ceiling/`.
+
 ## The ladder — what is on the table for an existing REST service
 
 Per core, 1-CPU pods, one instrument, each rung differing from the one
