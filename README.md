@@ -210,12 +210,15 @@ on every `bazel test //...`.
 ## On-cluster campaigns
 
 Everything above is loopback. [`docs/soak-results.md`](docs/soak-results.md)
-carries the on-cluster campaign results — multi-hour soaks, capacity ramps
-to the knee, and streaming throughput on identical 1-CPU pods (headlines:
-gRPC sustains 2.2× REST's requests per core; bidi streaming moves ~7.5× more
-messages per core than unary; the executor trade inverts with load). The
-harness lives in [`soak/`](soak/), raw per-step tables in
-[`docs/results/`](docs/results/).
+carries the on-cluster campaign results — multi-hour soaks, capacity ramps to
+the knee, and streaming throughput on identical 1-CPU pods. The ladder, per
+core on 1 KB bodies: REST HTTP/1.1 ~750 rps → h2c ~750 → **gRPC unary ~4,700
+(6×) → bidi stream ~10,000 msg/s (13×)**. Two earlier headlines here were
+withdrawn by that campaign rather than merely refined: the 7.5×/16× streaming
+ratios were the old k6 driver under-measuring unary, and "the executor trade
+inverts with load" was a loopback artifact — on a 1-CPU pod `:direct` leads on
+CPU per request, capacity and p50 alike. The harness lives in [`soak/`](soak/),
+raw per-step tables in [`docs/results/`](docs/results/).
 
 ## Building
 
