@@ -30,8 +30,8 @@ metric() { # $1 = base64 text, $2 = metric name
   printf '%s' "$1" | base64 -d 2>/dev/null | awk -v m="$2" '$1 == m { print $2; exit }'
 }
 
-echo "| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |"
-echo "|---|---|---|---|---|---|---|---|---|---|"
+echo "| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB | conns |"
+echo "|---|---|---|---|---|---|---|---|---|---|---|"
 
 header=""; body=""; in_step=0
 while IFS= read -r line; do
@@ -55,8 +55,19 @@ while IFS= read -r line; do
           { secs: $secs,
             ok: (if $ok == "" then $s.count else ($c[$ok] // 0) end),
             knee: ($c[$knee] // 0),
+            cx: ($c["upstream_cx_total"] // "n/a"),
             p50: pct(0.5), p99: pct(0.99), p999: pct(0.999) }' <<<"${body}" || { echo "collect.sh: could not parse Nighthawk JSON for offered=${rps}" >&2; echo '{}'; })
       secs=$(jq -r '.secs // 0' <<<"${stats}"); ok=$(jq -r '.ok // 0' <<<"${stats}"); knee=$(jq -r '.knee // 0' <<<"${stats}")
+      # How many connections the client actually opened — appended as the last
+      # column so a diff against an older table reads as an addition rather
+      # than a shift, and "n/a" when the counter is absent so re-reading an
+      # old campaign log still parses. Ground truth, not the
+      # formula: the per-connection stream limit is min(--max-concurrent-streams,
+      # the server's advertised SETTINGS_MAX_CONCURRENT_STREAMS), and Nighthawk
+      # opens ceil(streams_per_worker / limit) per WORKER, so the count depends
+      # on --concurrency too. A run that assumes it got four connections and got
+      # one produces a table that looks fine and answers nothing.
+      cx=$(jq -r '.cx // "n/a"' <<<"${stats}")
       # Stream-mode health and the driver-limit tell, to stderr so the table
       # stays one row per step: every stream must close grpc-status 0 with no
       # resets, and sends short of rps x duration while nothing was deferred
@@ -85,7 +96,8 @@ while IFS= read -r line; do
       row=$(awk -v rps="${rps}" -v secs="${secs}" -v ok="${ok}" -v knee="${knee}" \
                 -v p50="${p50}" -v p99="${p99}" -v p999="${p999}" \
                 -v cb="${cpu_b:-}" -v ca="${cpu_a:-}" -v tb="${thr_b:-}" -v ta="${thr_a:-}" \
-                -v hb="${heap_b:-}" -v ha="${heap_a:-}" -v rss="${rss_a:-}" -v warm="${warmup}" '
+                -v hb="${heap_b:-}" -v ha="${heap_a:-}" -v rss="${rss_a:-}" -v warm="${warmup}" \
+                -v cx="${cx:-}" '
         function f(x, d) { return (x == "" || x == "n/a") ? "n/a" : sprintf("%." d "f", x) }
         BEGIN {
           delivered = (secs > 0) ? ok / secs : 0
@@ -95,8 +107,8 @@ while IFS= read -r line; do
           heap_mb   = (hb != "" || ha != "") ? ((hb > ha ? hb : ha) / 1048576) : ""
           rss_mb    = (rss != "") ? rss / 1048576 : ""
           tag = (warm == "true") ? " (warmup)" : ""
-          printf "| %s%s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
-            rps, tag, f(delivered,1), f(p50,2), f(p99,2), f(p999,2), f(kneeps,1), f(cpu_ms,3), f(thr_s,1), f(heap_mb,0), f(rss_mb,0)
+          printf "| %s%s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+            rps, tag, f(delivered,1), f(p50,2), f(p99,2), f(p999,2), f(kneeps,1), f(cpu_ms,3), f(thr_s,1), f(heap_mb,0), f(rss_mb,0), f(cx,0)
         }')
       echo "${row}" ;;
     # kubectl logs interleaves stderr with stdout: Nighthawk's Envoy log lines
