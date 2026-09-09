@@ -234,3 +234,22 @@ above 1.85 would have read as plain CPU saturation rather than a serialization
 point. So the compiled arm's flatness across connections was never the monitor;
 the monitor only set the level ~10% lower. Adding connections past two is worse
 than useless: 2 → 4 bought 0.6% for 11% more CPU, 4 → 8 lost 4%.
+
+**The monitor removed (2026-09-09, clj-protobuf 0.2.5 / chart 0.2.21):** the
+after-number for the entry above, read against bands fixed before the chart
+existed. The fix is verified in the arm at frame level —
+`Collections$SynchronizedMap.get` was 0.85% of CPU on 0.2.2 and is ABSENT on
+0.2.5, with `initialized?` still running lock-free. The interop control did not
+move (peak 25,287 → 25,054, CPU/msg identical to three decimals at four of five
+steps), so nothing drifted across two chart versions and two image builds, and
+the compiled arm's change is attributable. **Compiled CPU per message fell ~3%
+consistently** and peak throughput rose 1.2%, inside noise. **The gap narrowed
+from +9.7% to +7.5% on throughput and from −11.1% to −8.6% on CPU per message —
+about two points, and still far above the predicted 1–4%.** That is the
+pre-registered MIDDLE band and it was fixed in advance as **ambiguous**: two
+cores may be too few for a fix whose measured win is a 1→8 thread scaling curve,
+or something other than the monitor contributes, and this run cannot separate
+those. **It is not a refutation of clj-protobuf's fix** — their 0.99×→8.48×
+stands on their own bench, and the magnitudes are consistent, since their +23%
+single-thread figure is encode alone and encode is a fraction of a request path.
+Settling it needs more cores than any node here can give one arm.

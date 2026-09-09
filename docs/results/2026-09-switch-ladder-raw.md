@@ -1444,6 +1444,121 @@ these arms, and it cannot see a parked thread.
 Logs, tables, `PREDICTION.md` and banked flamebearers for both arms and the
 driver in `soak/results/2026-09-09-ceiling/`.
 
+## The monitor removed, 2026-09-09 — the gap narrowed, and not enough to settle it
+
+The before-number above was published as a before-number, with a prediction on
+record: once clj-protobuf 0.2.5 removed the two process-wide
+`synchronizedMap`s, the interop-over-compiled gap should shrink toward the 1-4%
+the 1-CPU runs showed. Chart 0.2.21 carries the fix on both arms. This is the
+after-run, read against bands fixed in `soak/results/2026-09-10-after/PREDICTION.md`
+before the chart existed.
+
+### The fix is in the arm
+
+Verified at frame level rather than by version string, in the banked ceiling
+profile:
+
+| frame | 0.2.2 | 0.2.5 |
+|---|---|---|
+| `java/util/Collections$SynchronizedMap.get` | 0.85% | **absent** |
+| `clj_protobuf/impl/message$initialized_QMARK_` | 0.24% | 0.32% |
+| `clj_protobuf/impl/message/CompiledMessage.isInitialized` | 0.14% | 0.03% |
+
+The monitor is gone; `initialized?` still runs, now lock-free.
+
+### The control did not move
+
+The interop arm builds through protoc's generated classes, so it never took
+either monitor and does not use the compiled builder that 0.2.4's slot handover
+changed. It should be unaffected by the whole 0.2.2 → 0.2.5 span, and it was:
+
+| offered | 0.2.2 | 0.2.5 | Δ |
+|---|---|---|---|
+| 28,000 | 25,287 | 25,054 | −0.9% |
+| 32,000 | 24,386 | 24,872 | +2.0% |
+| 36,000 | 24,161 | 24,208 | +0.2% |
+
+Peak 25,287 → 25,054, and CPU per message identical to three decimals at four
+of five steps. So nothing drifted between two chart versions, two image builds
+and four hours of cluster state, and whatever the compiled arm does is
+attributable to the codec change.
+
+### The compiled arm
+
+| offered | 0.2.2 | ms/msg | 0.2.5 | ms/msg | Δ tput | Δ cpu/msg |
+|---|---|---|---|---|---|---|
+| 20,000 | 18,056 | 0.083 | 18,319 | 0.083 | +1.5% | +0.0% |
+| 24,000 | 22,019 | 0.069 | 21,829 | 0.065 | −0.9% | **−5.8%** |
+| 28,000 | 22,159 | 0.066 | 23,316 | 0.064 | +5.2% | −3.0% |
+| 32,000 | 22,393 | 0.066 | 22,860 | 0.064 | +2.1% | −3.0% |
+| 36,000 | 23,051 | 0.065 | 22,944 | 0.063 | −0.5% | −3.1% |
+
+CPU per message falls ~3% consistently — real, in the direction of the fix, and
+not drift, because the control did not move. Peak throughput is +1.2%, inside
+the run-to-run noise this harness has shown all day.
+
+### The gap, which is the number the prediction was about
+
+| | 0.2.2 | 0.2.5 |
+|---|---|---|
+| peak throughput, interop over compiled | +9.7% | **+7.5%** |
+| mean CPU per message, interop under compiled | −11.1% | **−8.6%** |
+
+**Narrowed by about two points, and still far above the predicted 1-4%.**
+
+### Verdict: the middle band, which was pre-registered as ambiguous
+
+The prediction file fixed three outcomes before this chart existed. This is the
+middle one, and its reading was fixed with it: **ambiguous, and it must be
+written as ambiguous.**
+
+Two cores may simply be too few for this fix to show its value — upstream's win
+is a SCALING win measured 1 → 8 threads (encode 0.99× → 8.48×, `.build` 0.31× →
+2.11×), and this arm runs two event loops on two cores, the shallowest end of
+that curve. Or something other than the monitor contributes to the interop
+arm's lead. **This run cannot separate those**, and picking one would be
+choosing a story over the evidence.
+
+What it is *not* is a refutation of clj-protobuf's fix. Their 1 → 8 thread
+result stands on their own instrument; nothing measurable on a two-core pod can
+overturn it, and this section must not be cited as if it could. The magnitudes
+are consistent: their +23% single-thread figure is for the encode operation
+alone, and encode is a fraction of a whole request path, so a ~3% whole-path CPU
+drop is what that looks like diluted.
+
+**But consistency is not confirmation, and this section does not claim it as
+one.** A ~3% drop being consistent with the monitor's removal is equally
+consistent with the removal mattering less than either of us thinks and
+something else supplying the rest. Evidence counts when a result is *uniquely*
+explained by a cause, not merely compatible with it, and nothing here is
+uniquely explained. The band was pre-registered as ambiguous and it stays
+ambiguous; the flattering half is not available just because the arithmetic
+permits it. (This paragraph exists because the clj-protobuf session declined the
+generous reading of their own fix when it was offered.)
+
+**The two results measure different things, and neither validates the other.**
+Upstream's says the compiled codec stops serializing across threads. This one
+says a two-core service got ~3% cheaper per message. If the residual gap later
+turns out to have nothing to do with that lock, *both* results survive intact —
+and that is worth recording now, while neither party has an interest in the
+answer, rather than discovering it when someone does.
+
+The ~7.5% residual is now the open question about the two arms, on top of the
+still-open question about the ceiling itself — which this run also reproduces:
+both arms plateau near 23,000 and 25,000 msg/s at 1.4-1.5 of 2 cores, with the
+driver at 0.57-0.63 of its single core at every step.
+
+### What would settle it
+
+More cores than this cluster can give one arm. No node here has three free, and
+worker-02's remainder belongs to another project, so the scaling half of
+upstream's result is not testable on this hardware. Recorded as a gap rather
+than left to look like a null result.
+
+Logs, tables, banked flamebearers for both arms and the driver, and the
+prediction file in `soak/results/2026-09-09-after-0.2.5/` and
+`soak/results/2026-09-10-after/`.
+
 ## The ladder — what is on the table for an existing REST service
 
 Per core, 1-CPU pods, one instrument, each rung differing from the one
