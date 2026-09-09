@@ -1249,6 +1249,109 @@ the client-worker path divides both `options_.streams() / concurrency` and
 
 Logs and `tables.md` in `soak/results/2026-09-09-connections/`.
 
+## A shared monitor on the encode path, 2026-09-09 — a cap, but not the ceiling
+
+The connection sweep left one question open: what holds a two-connection arm to
+~22,900 msg/s while half a core sits idle and nothing is throttled. The
+clj-protobuf session answered a different question — why their own encode
+benchmark would not scale — and the answer was a candidate for this one.
+
+They found two process-wide `Collections.synchronizedMap`s on the compiled
+codec's per-message path: one reached from `.build` via `initialized?`, one the
+parser registry on every decode. `synchronizedMap` takes the monitor on reads,
+so a cache *hit* still serializes. Their isolation is the convincing part —
+`.build` scales **0.31×** from 1 to 8 threads while `.buildPartial`, identical
+but for that call, scales cleanly, and protoc's own `.build` gets 4.72×.
+Negative scaling is a monitor convoy and not much else.
+
+A fully serialized section caps throughput *independently of thread count*,
+which is exactly the signature the sweep could not explain: 2, 4 and 8
+connections landing within 2.4% of each other at three different CPU costs.
+
+### The test
+
+The chart already carries an interop arm built from protoc-gen-clojure's
+`interop=true` output, which builds through protoc's generated classes and
+never touches either monitor. So: the same ramp, the same two connections, one
+arm each, paired in one session.
+
+Two setup details decide whether this measures anything. The chart leaves the
+interop arm on the library default executor (virtual threads) while every
+number above was measured on `:direct`, so **both arms were pinned to
+`:direct`** — otherwise executor and codec move together. And the compiled arm
+was re-run here rather than compared against `conn2-top` from four hours
+earlier; it landed at 23,051 against that run's 22,866, 0.8% apart, which is
+the harness reproducing for the third time today.
+
+| offered | compiled | cores | ms/msg | interop | cores | ms/msg | Δ tput | Δ cpu/msg |
+|---|---|---|---|---|---|---|---|---|
+| 20,000 | 18,056 | 1.50 | 0.083 | 18,793 | 1.45 | 0.077 | +4.1% | −7.2% |
+| 24,000 | 22,019 | 1.52 | 0.069 | 22,741 | 1.41 | 0.062 | +3.3% | −10.1% |
+| 28,000 | 22,159 | 1.46 | 0.066 | **25,287** | 1.47 | 0.058 | +14.1% | −12.1% |
+| 32,000 | 22,393 | 1.48 | 0.066 | 24,386 | 1.39 | 0.057 | +8.9% | −13.6% |
+| 36,000 | **23,051** | 1.50 | 0.065 | 24,161 | 1.38 | 0.057 | +4.8% | −12.3% |
+
+**Read the CPU column, not the throughput column.** Both arms are past the knee
+at every step here, where delivered rate is noisy — hence the 3.3–14.1% swing.
+CPU per message is steady: interop is 10–14% cheaper at every step above the
+first. That is the shape a contended monitor produces, the compiled arm paying
+park/unpark that interop never pays.
+
+### It is the monitor, at frame level
+
+The banked ceiling profiles show the call chain present in one arm and
+structurally absent in the other:
+
+| frame | compiled | interop |
+|---|---|---|
+| `java/util/Collections$SynchronizedMap.get` | 0.85% | absent |
+| `clj_protobuf/impl/message$initialized_QMARK_` | 0.24% | absent |
+| `clj_protobuf/impl/message/CompiledMessage.isInitialized` | 0.14% | absent |
+| `com/acme/greeter/Item.isInitialized` (protoc's own) | absent | 0.04% |
+
+Protoc's generated class does the same check about six times cheaper on-CPU,
+and without a monitor at all.
+
+The other corroboration is a sign flip. At 1 CPU the same two images measured
+interop **3–8% dearer** on unary and level on streaming. At 2 cores interop is
+10–14% cheaper. A sign change between one core and two, on unchanged images, is
+hard to explain by anything except contention — which cannot exist on one core.
+
+### What this does not explain — the ceiling
+
+Interop plateaus too: ~25,000 msg/s at 1.47 of 2 cores, half a core idle, zero
+throttling, while touching neither monitor. So the monitor is **a** cap and not
+**the** cap. Removing it is worth ~10% here, not the ~35% that reaching 2.0
+cores would imply, and whatever holds two connections to ~1.47 cores sits
+upstream of both monitors.
+
+That was predicted before the run by the session that found the lock, which is
+the main reason to trust the framing rather than the convenient reading: a
+severe first bottleneck hides whatever is behind it, and clearing it reveals
+the next one rather than the ceiling.
+
+### Version boundary
+
+Everything above is chart 0.2.19, which pins clj-protobuf **0.2.2** on both
+arms (`soak-grpc-jvm@sha256:4cfdadac`, verified against the running pods rather
+than the chart). The fix landed upstream as `3ce5ed7` ("codec: no process-wide
+monitor on the per-message path", clj-protobuf #40) at 16:01 UTC — after the
+`v0.2.4` tag, so it is unreleased, and chart 0.2.20 does **not** carry it.
+Upstream measures encode scaling 0.99× → 8.48× and single-thread throughput up
+23%, since an uncontended monitor is not free either.
+
+**So this table is a before-number against a known defect.** When 0.2.5 lands,
+the interop-over-compiled gap should shrink toward the 1–4% the 1-CPU runs
+showed; if it does not, the remainder is something other than the monitor.
+
+One caveat that limits all of the above: the two arms differ in more than the
+monitor — different generated code throughout. What licenses attributing this
+gap to contention is the 1-CPU control where they measured level, plus the
+frame table, not the ramp alone.
+
+Logs, tables and banked flamebearers (both arms and the driver, via
+`soak/save-flames.sh`) in `soak/results/2026-09-09-lock-ab/`.
+
 ## The ladder — what is on the table for an existing REST service
 
 Per core, 1-CPU pods, one instrument, each rung differing from the one

@@ -111,10 +111,15 @@ shrinking from 8% to 4% of samples.
 ### Open
 
 Why a two-connection arm stops at ~23,000 msg/s with half a core idle and no
-quota pressure. `stream_deferred` at 5,000–13,000/s puts the limit on the
-server side of the connection, so flow-control windows, the 40 × 256 in-flight
-budget and lock contention are the candidates; separating them needs a profile
-of the ceiling steps, which no run has taken.
+quota pressure. One candidate has since been measured and *partly* answers it:
+a process-wide monitor on clj-protobuf's compiled encode path is worth ~10%
+(see the monitor entry below), but an interop arm that never touches it
+plateaus at ~25,000 with half a core idle just the same. So the ceiling itself
+is still unexplained and sits upstream of the codec. `stream_deferred` at
+5,000–13,000/s puts it on the server side of the connection; flow-control
+windows and the 40 × 256 in-flight budget remain candidates, and separating
+them needs a wall-clock profile of the ceiling steps, which no run has taken —
+CPU profiles cannot see a parked thread.
 
 ### The record
 
@@ -192,3 +197,23 @@ vs 17,731 as a ramp's first step, with 4× the server-side throttling). Take
 plateaus from the upper steps, never the first. Five minutes at 200 rps does
 not warm a 1-CPU JVM for 20,000. That warmup is a deployment concern — warm
 before serving — rather than a protocol one, and it is not on the ladder.
+
+**A shared monitor on the encode path (2026-09-09):** the clj-protobuf session
+found two process-wide `Collections.synchronizedMap`s on the compiled codec's
+per-message path (one from `.build` via `initialized?`, one the parser registry
+on decode); `synchronizedMap` locks reads, so a cache hit still serializes, and
+`.build` scales **0.31x** from 1 to 8 threads where `.buildPartial` scales
+cleanly. Tested on-cluster as a paired A/B — same session, same chart, both
+arms pinned to `:direct` (the chart leaves the interop arm on virtual threads,
+which would have made the executor a second variable). **Interop is 10-14%
+cheaper per message at every step and peaks 9.7% higher** (25,287 vs 23,051
+msg/s), and the banked profiles show the call chain present in one arm and
+absent in the other: `SynchronizedMap.get` 0.85% of CPU on the compiled arm,
+nil on interop, where protoc's own `Item.isInitialized` does the same check for
+0.04%. Corroborated by a sign flip — at 1 CPU the same images measured interop
+3-8% DEARER, and contention cannot exist on one core. **But the monitor is a
+cap, not the ceiling:** interop plateaus at ~25,000 with 1.47 of 2 cores and
+half a core idle while touching neither monitor. Measured against clj-protobuf
+0.2.2; the fix is upstream as `3ce5ed7` (clj-protobuf #40) but was unreleased
+at the time, so this is a before-number and the gap should shrink toward the
+1-4% the 1-CPU runs showed once 0.2.5 ships.
