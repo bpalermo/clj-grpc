@@ -1487,8 +1487,26 @@ What the three columns say:
   field access, not generated-class parsing. That is exactly what the typed
   `interop=true` emitter path (protoc-gen-clojure 0.5.1) removes — the
   clj-protobuf suite measured its encode at 412 ns vs 650 ns for this path
-  on a deep shape — so ~0.04–0.05 ms per request is on the table on both
-  gRPC arms without touching the transport.
+  on a deep shape — so ~0.04–0.05 ms per request looked to be on the table on
+  both gRPC arms without touching the transport. **That prediction was tested
+  and did not hold**, and what replaced it took two attempts:
+    - *First reading* (see "The typed read path" below): with reads typed too,
+      the interop arm cost 3–8% MORE CPU than the compiled codec on unary and
+      was level on streaming, returning 15–45% lower p50 instead. The frames
+      said the work moved out of the codec into protoc's generated accessors
+      almost one for one rather than disappearing.
+    - *Corrected reading* (see "A shared monitor on the encode path" below):
+      that CPU comparison is **core-count dependent**, and part of it was a
+      defect rather than a property of either code path. At 2 cores the same
+      two images reverse — interop is 10–14% CHEAPER per message — because the
+      compiled path took a process-wide monitor per message that interop never
+      touched. A sign flip between one core and two, on unchanged images, is
+      contention. The 3–8% figure above therefore describes one core, and the
+      two-core figures were taken against clj-protobuf 0.2.2, before the fix
+      in `3ce5ed7`.
+  What survives both readings is the lesson: a microbenchmark's encode delta
+  did not survive contact with a whole request path, and the first explanation
+  offered for that was incomplete.
 - **Streaming's gain over unary is visible as grpc-java shrinking** from
   8.4% (0.023 ms) to 3.8% (0.006 ms): per-RPC setup, headers, trailers and
   `GrpcHttp2InboundHeaders` handling amortized over a stream. Netty's share
