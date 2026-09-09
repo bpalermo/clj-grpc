@@ -95,8 +95,15 @@ mode_args() {
     grpc-stream)
       # --rps is aggregate here and already emitted by common(); --streams is the
       # total across workers (must be a multiple of --concurrency).
+      #
+      # --max-concurrent-streams was missing here while http2 and grpc-unary
+      # both passed it, so loadJob.maxConcurrentStreams was silently inert in
+      # streaming mode: a run that set it to 10 expecting four connections got
+      # one (upstream_cx_total=1 in both arms). The default of 512 over 40
+      # streams is one connection either way, so adding it changes no result
+      # already published — it makes the knob work.
       echo "--grpc-mode bidi-stream --streams ${STREAMS} --max-inflight-per-stream ${INFLIGHT}" \
-           "--max-active-requests $(per_worker "${MAX_ACTIVE_REQUESTS}")" \
+           "--max-active-requests $(per_worker "${MAX_ACTIVE_REQUESTS}") --max-concurrent-streams ${MAX_CONCURRENT_STREAMS}" \
            "--stream-drain-duration ${STREAM_DRAIN}" \
            "--request-body-file /bodies/${TIER}.pb ${BASE}/acme.greeter.Greeter/Chat" ;;
     *)
