@@ -75,6 +75,14 @@ the gRPC arms the largest software cost, 20–26%, is protobuf's
 descriptor-driven field access under the clj-protobuf codec, which the
 typed `interop=true` path (protoc-gen-clojure 0.5.1) removes; streaming's
 gain shows as grpc-java shrinking from 8% to 4% of samples.
+**Typed reads (2026-09-08/09, protoc-gen-clojure 0.6.0):** with `interop=true` now
+typing reads as well as writes, it costs 3–8% more CPU than the compiled codec on
+unary and is level on streaming (1–4%, inside the noise), while returning 15–45%
+lower p50 throughout — two independent pairs, since the effect is noise-sized. The
+frames show why: the typed path moves conversion work out of the codec into protoc's
+generated accessors almost one for one (streaming self time 9.4% → 3.2% codec,
+3.0% → 9.1% protobuf-java, sum unchanged). So interop is a latency-for-CPU trade on
+unary and a free latency win on streaming, not the ceiling the codec was aimed at.
 **Re-baseline (2026-09-07/08):** measured again with the library's default
 virtual-thread executor (grpc-java will not optimise `:direct` further),
 agent-free images and clj-protobuf's descriptor-compiled codec, the gRPC

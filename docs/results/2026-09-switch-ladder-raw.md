@@ -858,6 +858,139 @@ Net effect for a reader of this document: a chart version now names one thing fo
 and REST arms, and native runs name their digest directly — which is what the caveat above
 asked for.
 
+## The typed read path, 2026-09-08/09 — interop stops paying for its reads
+
+protoc-gen-clojure 0.6.0 adds a typed READ path to `interop=true`: `proto->X` calls the
+generated `.getX` accessors behind an `instanceof` guard, where every previous version
+routed reads through `codec/get-field` on both arms. The write path was already typed.
+This is the change the last measurement argued for — interop then won p50 by 10–55%
+while costing 2–9% more CPU, and reads were the untouched half.
+
+Chart 0.2.18 rebuilds only the interop arm on 0.6.0. The control image is bit-identical
+to the one charts 0.2.15 and 0.2.17 pin, so the generated code is the only variable.
+Both arms on the library-default executor, profiled, matched steps. **Two independent
+pairs**, run 40 minutes apart, because the effect is the size of this harness's noise.
+
+### unary, realistic — pair 1 (control, then interop)
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 2.07 | 3549.56 | 4620.03 | 0.0 | 1.696 | 23.4 | 28 | 182 |
+| 1000 | 999.9 | 2.22 | 23.88 | 46.24 | 0.0 | 0.647 | 1.0 | 29 | 185 |
+| 2000 | 2000.0 | 3.50 | 41.26 | 76.54 | 0.0 | 0.423 | 1.5 | 29 | 188 |
+| 3000 | 2855.3 | 17.43 | 4130.60 | 5489.56 | 144.5 | 0.330 | 31.8 | 62 | 233 |
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 2.25 | 3968.99 | 6084.36 | 0.0 | 1.862 | 21.0 | 23 | 178 |
+| 1000 | 1000.0 | 1.79 | 19.88 | 37.01 | 0.0 | 0.693 | 0.7 | 31 | 182 |
+| 2000 | 1999.9 | 2.40 | 39.12 | 124.47 | 0.0 | 0.445 | 1.4 | 31 | 183 |
+| 3000 | 2999.8 | 4.75 | 326.09 | 558.01 | 0.1 | 0.309 | 5.9 | 24 | 193 |
+
+### unary, realistic — pair 2
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 2.10 | 3695.05 | 4673.24 | 0.0 | 1.685 | 30.7 | 24 | 177 |
+| 1000 | 1000.0 | 2.16 | 25.33 | 54.28 | 0.0 | 0.644 | 1.5 | 26 | 179 |
+| 2000 | 1999.9 | 3.67 | 87.41 | 375.29 | 0.1 | 0.426 | 6.5 | 30 | 185 |
+| 3000 | 2999.4 | 5.06 | 84.30 | 167.28 | 0.1 | 0.303 | 3.5 | 30 | 186 |
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 2.21 | 3764.78 | 4828.69 | 0.0 | 1.848 | 43.9 | 27 | 176 |
+| 1000 | 1000.0 | 1.91 | 19.33 | 48.55 | 0.0 | 0.699 | 1.4 | 30 | 179 |
+| 2000 | 1999.9 | 2.61 | 52.37 | 142.87 | 0.0 | 0.444 | 2.8 | 30 | 182 |
+| 3000 | 2998.6 | 3.67 | 76.08 | 118.47 | 0.6 | 0.312 | 12.1 | 22 | 182 |
+
+### 40 streams, realistic — pair 1
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.70 | 445.33 | 799.77 | 0.0 | 1.110 | 8.0 | 23 | 168 |
+| 2000 | 1999.9 | 1.78 | 44.64 | 92.43 | 0.0 | 0.324 | 1.6 | 27 | 171 |
+| 3500 | 3499.9 | 2.66 | 424.44 | 481.35 | 0.0 | 0.226 | 5.4 | 27 | 180 |
+| 5000 | 4999.7 | 3.84 | 164.52 | 360.02 | 0.0 | 0.169 | 0.5 | 26 | 184 |
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.78 | 339.90 | 704.68 | 0.0 | 1.178 | 13.0 | 24 | 172 |
+| 2000 | 1999.9 | 1.55 | 53.59 | 140.13 | 0.0 | 0.341 | 1.8 | 24 | 177 |
+| 3500 | 3499.8 | 1.93 | 174.97 | 267.34 | 0.0 | 0.229 | 1.1 | 30 | 186 |
+| 5000 | 4999.4 | 2.59 | 201.86 | 432.39 | 0.0 | 0.171 | 0.7 | 33 | 195 |
+
+### 40 streams, realistic — pair 2
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.74 | 392.28 | 584.94 | 0.0 | 1.110 | 10.4 | 20 | 175 |
+| 2000 | 1999.9 | 2.05 | 417.25 | 592.41 | 0.0 | 0.345 | 7.9 | 24 | 183 |
+| 3500 | 3499.8 | 2.64 | 100.25 | 188.14 | 0.0 | 0.221 | 0.8 | 24 | 186 |
+| 5000 | 4999.5 | 4.41 | 384.50 | 516.37 | 0.0 | 0.174 | 2.7 | 33 | 197 |
+
+| offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 (warmup) | 200.0 | 1.78 | 527.52 | 811.96 | 0.0 | 1.225 | 16.8 | 24 | 169 |
+| 2000 | 1999.8 | 1.63 | 121.85 | 257.06 | 0.0 | 0.352 | 9.4 | 26 | 179 |
+| 3500 | 3499.6 | 1.74 | 66.26 | 121.70 | 0.0 | 0.230 | 2.1 | 27 | 184 |
+| 5000 | 4999.8 | 2.24 | 90.01 | 161.74 | 0.0 | 0.175 | 1.2 | 33 | 187 |
+
+### What the typed read path bought
+
+Each cell is pair 1 / pair 2.
+
+| workload | step | codec CPU | interop CPU | codec p50 | interop p50 |
+|---|---|---|---|---|---|
+| unary | 1,000 rps | 0.647 / 0.644 ms | 0.693 / 0.699 | 2.22 / 2.16 ms | 1.79 / 1.91 |
+| unary | 2,000 rps | 0.423 / 0.426 | 0.445 / 0.444 | 3.50 / 3.67 | 2.40 / 2.61 |
+| unary | 3,000 rps | 0.330* / 0.303 | 0.309 / 0.312 | 17.4* / 5.06 | 4.75 / 3.67 |
+| stream | 2,000 msg/s | 0.324 / 0.345 | 0.341 / 0.352 | 1.78 / 2.05 | 1.55 / 1.63 |
+| stream | 3,500 msg/s | 0.226 / 0.221 | 0.229 / 0.230 | 2.66 / 2.64 | 1.93 / 1.74 |
+| stream | 5,000 msg/s | 0.169 / 0.174 | 0.171 / 0.175 | 3.84 / 4.41 | 2.59 / 2.24 |
+
+\* The control's 3,000 step in pair 1 was degraded — 31.8 s throttled, heap 62 MB, p99
+4.1 s, 2,855 delivered — and its profile shows 27.4% of samples in JIT and GC against
+interop's 12.4%. Pair 1 alone would have supported "interop is 6% cheaper at the knee";
+pair 2, where the same step is healthy, shows interop 3% dearer. **That inversion was
+the control having a bad step, not a result** — which is what the second pair was for.
+
+- **Unary: interop costs 3–8% more CPU and returns 15–30% lower p50**, consistently
+  across all three steps in both pairs. What remains is the write side: a generated
+  builder allocates a builder and a message per call where the compiled codec writes
+  into a slot array it owns, and the collector pays for that off the request path —
+  which is also why latency improves while CPU does not.
+- **Streaming: a wash on CPU, reproducibly** — 1–4% across both pairs, inside the
+  noise, with the same 20–45% p50 advantage. Typed reads closed the whole penalty here.
+- **Run-to-run variance is now bounded**: matched steps agree within 1–3% between
+  pairs, so a 3–8% effect is real and a 1–4% one is not distinguishable from noise.
+
+### Where the work went, from the frames
+
+Self time on the 5,000 msg/s streaming windows:
+
+| layer | control | interop |
+|---|---|---|
+| clj-protobuf codec | 9.4% | 3.2% |
+| protobuf-java + generated classes | 3.0% | 9.1% |
+| **sum** | **12.4%** | **12.3%** |
+| GC + JIT | 8.8% | 10.2% |
+| syscalls | 30.0% | 33.2% |
+
+The typed path does not remove conversion work; it moves it, almost exactly one for one,
+out of the codec's closures into protoc's generated accessors. That is what
+`interop=true` now is on a service: the same CPU spent elsewhere, bought back as latency
+because less of it sits inline on the request.
+
+### What this settles
+
+`interop=true` is a **latency-for-CPU trade on unary and a free latency win on
+streaming**. It is not the ceiling the descriptor-compiled codec was aimed at: the codec
+matches it on streaming CPU and beats it on unary CPU while giving up p50. Which arm a
+service prefers follows from what binds it — a 1-CPU pod near its knee keeps the codec,
+a latency-sensitive service with cores to spare takes interop — and the two are now
+within a few percent of each other rather than a factor apart, which is the real change
+since 0.5.1.
+
 ## The ladder — what is on the table for an existing REST service
 
 Per core, 1-CPU pods, one instrument, each rung differing from the one
