@@ -113,7 +113,8 @@ Two measured levers, honest about their trade:
 
 Time-to-first-RPC for a cold server process — the number Knative
 scale-from-zero pays. Measured with `//bench:coldstart` (spawn to first
-successful call, warm prober, fresh channel per probe, median of 5):
+successful call, warm prober, fresh channel per probe, median of 5) — measured
+2026-08-29 on clj-protobuf 0.1.6, before the compiled codec:
 
 | arm | median | range |
 |---|---|---|
@@ -148,7 +149,8 @@ registration for.
 The other side of that trade is steady state. `//bench:steady` spawns the
 same two servers and measures the ten-thousandth RPC instead of the first —
 20k-call warmup, then sequential unary latency and 32-way virtual-thread
-throughput, same warm JVM client for both arms:
+throughput, same warm JVM client for both arms — also 2026-08-29 on
+clj-protobuf 0.1.6:
 
 | arm | unary p50 | p90 | p99 | 32-way throughput |
 |---|---|---|---|---|
@@ -206,6 +208,16 @@ HttpClient). Mean latency, quick-mode criterium, JDK 21, Linux x86_64:
 ~3× at every size, and the gap holds from framing-dominated to
 bytes-dominated payloads. The smoke test keeps both arms serving and agreeing
 on every `bazel test //...`.
+
+**Provenance, and one claim to distrust.** This table was measured 2026-08-23
+on clj-protobuf 0.1.6 — before the descriptor-compiled codec (0.2.0) that this
+library now depends on, which is worth 6–17% CPU per request on the cluster. A
+single rerun on 0.2.2 put small and medium within a few percent of the rows
+above but the 64 KB ratio near 1.8× rather than 2.8×, so **"the gap holds …
+to bytes-dominated payloads" is the sentence to doubt**. That rerun was taken
+on a machine busy with other builds and moved both arms in implausible
+directions, so it is not enough to republish: the table stands as measured
+until someone reruns `bazel run //bench:run` on a quiet host.
 
 ## On-cluster campaigns
 
