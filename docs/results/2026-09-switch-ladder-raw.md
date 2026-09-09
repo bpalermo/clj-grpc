@@ -1522,9 +1522,26 @@ choosing a story over the evidence.
 What it is *not* is a refutation of clj-protobuf's fix. Their 1 → 8 thread
 result stands on their own instrument; nothing measurable on a two-core pod can
 overturn it, and this section must not be cited as if it could. The magnitudes
-are in fact consistent: their +23% single-thread figure is for the encode
-operation alone, and encode is a fraction of a whole request path, so a ~3%
-whole-path CPU drop is what that looks like diluted.
+are consistent: their +23% single-thread figure is for the encode operation
+alone, and encode is a fraction of a whole request path, so a ~3% whole-path CPU
+drop is what that looks like diluted.
+
+**But consistency is not confirmation, and this section does not claim it as
+one.** A ~3% drop being consistent with the monitor's removal is equally
+consistent with the removal mattering less than either of us thinks and
+something else supplying the rest. Evidence counts when a result is *uniquely*
+explained by a cause, not merely compatible with it, and nothing here is
+uniquely explained. The band was pre-registered as ambiguous and it stays
+ambiguous; the flattering half is not available just because the arithmetic
+permits it. (This paragraph exists because the clj-protobuf session declined the
+generous reading of their own fix when it was offered.)
+
+**The two results measure different things, and neither validates the other.**
+Upstream's says the compiled codec stops serializing across threads. This one
+says a two-core service got ~3% cheaper per message. If the residual gap later
+turns out to have nothing to do with that lock, *both* results survive intact —
+and that is worth recording now, while neither party has an interest in the
+answer, rather than discovering it when someone does.
 
 The ~7.5% residual is now the open question about the two arms, on top of the
 still-open question about the ceiling itself — which this run also reproduces:
