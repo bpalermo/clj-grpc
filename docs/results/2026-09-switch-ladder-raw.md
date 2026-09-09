@@ -1278,6 +1278,26 @@ table anywhere in the ladder: the JIT warmup of a fresh 1-CPU JVM pod
 (minutes, every arm) and the first-step outliers it leaves, which are a
 deployment concern (warm before serving) rather than a protocol one.
 
+**These are per-core figures, and rungs 2 and 3 only reach them if the client
+opens enough connections.** Every row above was measured on a 1-CPU pod, where
+the distinction cannot appear. It appears immediately at two: a connection
+binds to one event loop, and under `:direct` that loop also runs the handler,
+so a client holding one multiplexed connection to a multi-core pod uses one
+core of it — flat at 0.79–0.92 cores however hard it is pushed. A second
+connection took the same arm from 15,294 to 22,866 msg/s; a third through
+eighth bought nothing and cost 13% more CPU. So the ladder's ratios are a
+per-core property, and turning them into pod capacity means sizing the
+client's connection count too — asserted from `upstream_cx_total`, never
+computed from flags. See "Two cores" and "The connection sweep" above.
+
+Three levers apply on top of any gRPC rung, measured separately and roughly
+additive over disjoint code: direct linking on the arm's JVM (5–13% CPU on
+unary, 3–17% per streamed message), clj-protobuf's compiled codec (6–17%),
+and the executor choice (`:direct` against the default virtual threads, worth
+15–27% CPU and ~25% stream capacity, with the gap widening as cores are
+added). protoc-gen-clojure's typed `interop=true` path is not a fourth: it
+trades 3–8% more CPU on unary for 15–45% lower p50.
+
 Where the 1.59 → 0.56 ms goes is the next section.
 
 ## Profiled repeats — where the per-request cost goes
