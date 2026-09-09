@@ -1055,13 +1055,29 @@ what makes the mechanism visible:
 
 `:direct` streaming is flat at 0.78–0.90 cores across the whole ramp, on a two-core pod,
 no matter what is offered. The second core is idle. Unary on the same executor reaches
-1.33, and the only difference is that `run.sh` gives unary eight connections and
-streaming one.
+1.33.
 
-**A gRPC stream's connection binds to one event loop, and under `:direct` that loop also
-runs the handler, so one connection means one core.** A client holding a single
-multiplexed connection to a four-core pod will use one core of it. Streaming capacity
-scales with connections, not with cores.
+The connection counts, read from `upstream_cx_total` rather than from the flags, say why —
+and they make the case within a single run rather than across two:
+
+| `:direct` unary step | connections opened | cores |
+|---|---|---|
+| 2,000 rps | 1 | 0.68 |
+| 6,000 rps | 5 | 0.89 |
+| 10,000 rps | 8 | 1.33 |
+
+Unary's pool grows with load because `run.sh` passes `--max-concurrent-streams 512`
+against 4,096 in flight, so the client opens another connection every 512 outstanding
+requests. The streaming branch passed no such flag, leaving it at 2,147,483,647, so all
+40 streams rode one connection at every rate — and `:direct` never exceeded 0.90 cores.
+Both runs used `--concurrency 1`, one client worker, so this is not the client's worker
+count showing through.
+
+**A connection binds to one event loop, and under `:direct` that loop also runs the
+handler, so one connection means one core.** A client holding a single multiplexed
+connection to a four-core pod will use one core of it. Capacity scales with connections,
+not with cores — and this is a property of connections rather than of streaming, since
+the unary arm shows the same relationship inside one run as its pool grows.
 
 Virtual threads do spread a single connection — 1.12 to 1.57 cores — because handlers
 run off the loop. And it still loses: VT spends 1.57 cores to deliver 14,438 msg/s where
@@ -1087,9 +1103,16 @@ The deliberate connection experiment did not run. `run.sh` never passed
 `--max-concurrent-streams` in `grpc-stream` mode, so the setting was inert and the
 "4 connections" configuration opened one, exactly like its control
 (`upstream_cx_total=1` in both). Fixed in chart 0.2.19; the 1/2/4-connection ramp that
-would confirm the rule above, and measure how cleanly capacity tracks connection count,
-is still to run. The mechanism is inferred from the unary/streaming contrast rather than
-measured directly, which is weaker evidence than the rest of this document.
+would measure how cleanly capacity tracks connection count is still to run, driven by
+`--max-concurrent-streams` rather than `--connections` (which is a circuit breaker:
+exceeding it produces `upstream_cx_overflow` rather than more connections).
+
+The rule above therefore rests on observed connection counts and their correlation with
+cores consumed — including within the unary run — rather than on a deliberate sweep. One
+caveat carried from the fork session: connections are per client worker, so the count is
+`concurrency × ceil((streams / concurrency) / mcs)`, and the effective per-connection
+limit is the lower of the client's `mcs` and the server's advertised
+`SETTINGS_MAX_CONCURRENT_STREAMS`. Assert on `upstream_cx_total`; do not compute it.
 
 ## The ladder — what is on the table for an existing REST service
 
