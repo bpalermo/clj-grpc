@@ -1644,9 +1644,31 @@ never found its own ceiling: 55,405 delivered of 56,000 offered, knee 589/s, and
 the single-worker driver at 0.77 of its one core was closer to binding than the
 arm was.
 
-So the ceiling is **per-byte work**, in the arm and in the kernel both, and the
-node saturating at 1 KB is its consequence. Not wakeups, not framing, not packet
-rate, not message rate.
+So the ceiling is **per-byte work**, and the node saturating at 1 KB is its
+consequence. Not wakeups, not framing, not packet rate, not message rate.
+
+**And the per-byte work is in the JVM, not in the overlay.** The two runs price
+it directly, which matters because "the wall scales with bytes through a VXLAN
+overlay" and "the wall scales with bytes inside the server" call for completely
+different work:
+
+| | realistic | tiny | change |
+|---|---|---|---|
+| bytes on the wire | 24 MiB/s | 0.89 MiB/s | **÷27** |
+| node softirq | 0.72 cores | 0.67 cores | **−7%** |
+| arm CPU per message | 64.0 µs | 20.0 µs | **÷3.2** |
+
+Kernel time barely moved while the bytes fell by a factor of 27 — and it carried
+2.4× the messages doing it — so the overlay is not where the payload cost lands
+at these rates. The arm is: 44 µs of extra CPU per message for ~1,018 extra
+bytes, about **43 ns per byte**. That is far too expensive to be byte movement
+(a copy is nearer 1 ns/byte), and matches this document's earlier attribution —
+descriptor-driven protobuf field access, persistent-map construction, and the
+copies between them.
+
+The practical consequence for the ladder: on 1 KB bodies roughly two thirds of
+the arm's per-message CPU is payload handling, and it is the codec and the value
+representation that own it, not the transport and not the network.
 
 ### The finding that survives: one connection is one event loop
 
