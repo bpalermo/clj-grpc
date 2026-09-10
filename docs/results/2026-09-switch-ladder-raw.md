@@ -1124,6 +1124,14 @@ limit is the lower of the client's `mcs` and the server's advertised
 
 ## The connection sweep, 2026-09-09 — connections carry capacity, up to a ceiling that is not the cores
 
+> **Corrected below** (see "The ceiling was the node"). The ceiling this section
+> could not explain was the HOST running out of CPU: 4.11 of the node's 4 cores
+> while the pod held 1.49 of its 2-core quota, invisible to every counter used
+> here. The single-connection cap stands and was re-measured with the host ruled
+> out. "Capacity stops climbing at two connections" does not: two connections is
+> where this 4-core node ran out on 1 KB messages, and at the tiny tier the same
+> two connections carry 55,405 msg/s.
+
 The section above ended by saying the deliberate connection experiment had not run: the
 knob was inert, so the rule rested on connection counts observed after the fact and their
 correlation with cores consumed. Chart 0.2.19 made `--max-concurrent-streams` reach the
@@ -1251,6 +1259,12 @@ Logs and `tables.md` in `soak/results/2026-09-09-connections/`.
 
 ## A shared monitor on the encode path, 2026-09-09 — a cap, but not the ceiling
 
+> **Still valid as a paired comparison**, and its framing of the ceiling is
+> corrected below. Both arms ran on the same node under the same conditions with
+> one variable, so the interop-over-compiled gap stands. What was wrong was
+> treating the wall both arms hit as a property of the server: it was the host
+> at 4.11 of 4 cores. See "The ceiling was the node".
+
 The connection sweep left one question open: what holds a two-connection arm to
 ~22,900 msg/s while half a core sits idle and nothing is throttled. The
 clj-protobuf session answered a different question — why their own encode
@@ -1353,6 +1367,14 @@ Logs, tables and banked flamebearers (both arms and the driver, via
 `soak/save-flames.sh`) in `soak/results/2026-09-09-lock-ab/`.
 
 ## The ceiling is global, 2026-09-09 — invariant to connections, with a core to spare
+
+> **Superseded below** (see "The ceiling was the node"). The conclusion — a
+> global cap upstream of the codec, with real idle capacity — was right that the
+> cap was not the codec and not per-connection, and wrong about the "core to
+> spare". That core was not spare: the node was at 4.11 of 4 while the pod's
+> cgroup showed 1.47 of 2. The pre-registered threshold that would have caught
+> this (cores above 1.85 reads as saturation) was applied to the POD's cores,
+> which is the only number the harness had at the time.
 
 The monitor A/B ended with the interop arm plateauing at ~25,000 msg/s on 1.47
 of 2 cores while touching neither of clj-protobuf's `synchronizedMap`s. So the
@@ -1558,6 +1580,124 @@ than left to look like a null result.
 Logs, tables, banked flamebearers for both arms and the driver, and the
 prediction file in `soak/results/2026-09-09-after-0.2.5/` and
 `soak/results/2026-09-10-after/`.
+
+## The ceiling was the node, 2026-09-09/10 — and one finding survives it
+
+Every ceiling this campaign chased above one connection was the host running out
+of CPU. The pod's cgroup could not see it, so the search went to the codec, to
+connection counts, to a monitor in clj-protobuf, and to flow control — none of
+which were it.
+
+### The instrument that was missing
+
+talos-main is Raspberry Pi CM5 on a DeskPi Super6C: **4 cores and 8 GB per
+node**, flannel VXLAN between them. Kernel network work — softirq receive, VXLAN
+encap and decap, the CNI path — is charged to the **node**, not to the pod's
+cgroup. So an arm holding 1.49 of a 2-core quota is idle only *inside* the
+cgroup, and every CPU figure this campaign published measures one side of that
+line.
+
+Prometheus here has no node-exporter (the `kubernetes-*` scrape jobs are off),
+but Talos publishes per-CPU counters natively, so this needed nothing deployed:
+`talosctl get cpustat` returns user/system/softIrq/irq/idle per CPU, cumulative,
+differenced across a step window by the new `soak/node-cpu.sh`.
+
+### What the node was doing at the ceiling
+
+Compiled arm, `:direct`, 2 CPU, two connections, chart 0.2.21 — the run that
+reproduces 23,294 msg/s against the previous 23,316, 0.1% apart:
+
+| offered | delivered | arm cores (of 2) | node cores (of 4) | softirq |
+|---|---|---|---|---|
+| 200 (warmup) | 200 | 0.18 | 1.83 | 0.23 |
+| 20,000 | 18,106 | 1.50 | 3.03 | 0.53 |
+| 24,000 | 21,822 | 1.46 | 3.14 | 0.55 |
+| **28,000** | **23,294** | **1.51** | **4.11** | 0.72 |
+| 32,000 | 23,073 | 1.48 | 4.02 | 0.68 |
+
+**The node is full.** 4.11 of 4 cores, with the pod at 1.51 of 2 and essentially
+no cgroup throttling. The arithmetic closes: the node's resident workloads —
+aether's fleet, kubelet, containerd, the profiler DaemonSets — cost **1.83
+cores** with the arm idle, leaving ~2.2 free; the arm takes 1.49 and the kernel
+networking it generates another 0.72, and 1.49 + 0.72 = 2.21.
+
+So the "half a core idle" was never idle capacity. It was a pod that could not be
+scheduled more often because every core on the host was busy — runqueue
+contention, which no pod-level counter in this harness can see. `cpu0` carried
+0.55 of the 0.72 softirq, the single-NIC-receive-queue pattern, but never
+saturated on its own: the limit is the node in aggregate, not that one core.
+
+### It is per-byte cost, not per-message
+
+The tiny tier is 7 bytes of protobuf against realistic's 1,025. Same arm, same
+two connections, ramp raised:
+
+| offered | delivered | p50 ms | ms/msg | arm cores | node cores |
+|---|---|---|---|---|---|
+| 32,000 | 31,999 | 1.90 | 0.031 | 0.99 | 2.59 |
+| 48,000 | 47,875 | 2.49 | 0.023 | 1.10 | 3.58 |
+| 56,000 | **55,405** | 2.72 | 0.020 | 1.11 | 3.51 |
+
+**55,405 msg/s against realistic's 23,294 — 2.4×** — using *less* arm CPU (1.11
+vs 1.49), leaving the node unsaturated, at p50 2.72 ms rather than 209 ms. Tiny
+never found its own ceiling: 55,405 delivered of 56,000 offered, knee 589/s, and
+the single-worker driver at 0.77 of its one core was closer to binding than the
+arm was.
+
+So the ceiling is **per-byte work**, in the arm and in the kernel both, and the
+node saturating at 1 KB is its consequence. Not wakeups, not framing, not packet
+rate, not message rate.
+
+### The finding that survives: one connection is one event loop
+
+The same arm at **one** connection, where the host is not the constraint:
+
+| offered | delivered | arm cores (of 2) | node cores (of 4) |
+|---|---|---|---|
+| 12,000 | 11,985 | 0.89 | 2.59 |
+| 16,000 | 14,667 | 0.90 | 2.35 |
+| 20,000 | **15,203** | **0.90** | **3.04** |
+
+15,203 against the earlier `conn1`'s 15,294 — 0.6% apart, so the codec version
+does not move it and the harness reproduces a fourth time.
+
+**The arm is pinned at 0.90 cores with a full node core to spare.** That is not a
+host limit. A connection binds to one event loop, `:direct` runs the handler on
+that loop, and the loop is the constraint — exactly as "Two cores" claimed, now
+measured with the host ruled out rather than assumed away.
+
+### What this corrects
+
+The two phenomena come apart, and they had been written up as one:
+
+| | arm | node | cause |
+|---|---|---|---|
+| 1 connection | 0.90 of 2 | 3.04 of 4 | **real**: one connection, one event loop |
+| 2+ connections | 1.49 of 2 | 4.11 of 4 | **the host ran out of CPU** |
+
+- **Stands:** the single-connection cap, and with it the sizing rule that a
+  client holding one multiplexed connection to a multi-core pod uses one core
+  of it.
+- **Withdrawn:** "capacity stops climbing at two connections" as a property of
+  connections. Two connections is where *this node* ran out, on 1 KB messages.
+  At the tiny tier the same two connections carry 55,405 msg/s.
+- **Withdrawn:** the connection-invariance of 2/4/8 as evidence for a global
+  serialization point. Those runs were all pinned by the same host ceiling.
+- **Unaffected as comparisons:** the monitor A/B and its after-run. Those are
+  paired — same node, same conditions, one variable — so the interop-over-
+  compiled gap and its narrowing stand. What was wrong was calling the wall
+  they both hit a property of the server.
+
+### The caveat that now applies to every 2-CPU number here
+
+**A 2-core arm on a 4-core node with a 1.83-core resident load has ~2.2 cores of
+real headroom, not 2.** The quota was never the binding constraint; the host
+was. Any future multi-core work on this cluster needs the node column beside the
+pod column, or it will measure the same artefact again — which is what
+`soak/node-cpu.sh` is for.
+
+Logs, tables, node and driver samples, banked flamebearers and the prediction
+file in `soak/results/2026-09-09-node-network/`.
 
 ## The ladder — what is on the table for an existing REST service
 

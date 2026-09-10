@@ -108,19 +108,18 @@ protobuf's descriptor-driven field access under the clj-protobuf codec, which
 the typed `interop=true` path removes; streaming's gain shows as grpc-java
 shrinking from 8% to 4% of samples.
 
-### Open
+### Answered
 
-Why a gRPC streaming arm stops at ~25,000 msg/s with half a core idle and no
-quota pressure. Four things are now ruled out rather than suspected: the codec
-(an interop arm touching neither of clj-protobuf's monitors hits the same wall),
-the connection count (2, 4 and 8 connections land within 5% of each other), CPU
-saturation (cores sit at 1.47–1.64 of 2.0), and the driver (0.60–0.66 of its
-single core throughout). What remains: HTTP/2 flow-control windows — the server
-never sets `flowControlWindow`, so grpc-java's default and BDP auto-tuning
-apply — the 40 × 256 in-flight budget, a serialization point inside the
-transport, or a wakeup path. Separating those needs a wall-clock profile;
-`process_cpu` is the only profile type Pyroscope holds for these arms and it
-cannot see a parked thread.
+**Why a gRPC streaming arm stopped at ~25,000 msg/s with half a core idle: the
+NODE was out of CPU.** talos-main is Raspberry Pi CM5, 4 cores per node, flannel
+VXLAN; kernel softirq and VXLAN work is charged to the node, not the pod's
+cgroup. At the ceiling the node sat at **4.11 of 4 cores** while the pod held
+1.49 of its 2-core quota with no throttling — runqueue contention no pod-level
+counter here could see. The resident load (aether's fleet, kubelet, containerd,
+profilers) is 1.83 cores, leaving ~2.2; the arm's 1.49 plus 0.72 of kernel
+networking is 2.21. It is per-BYTE cost, not per-message: at 7-byte messages the
+same two connections carry **55,405 msg/s** with the node unsaturated. See the
+connection-sweep and monitor entries below, whose ceilings this corrects.
 
 ### The record
 
@@ -253,3 +252,21 @@ those. **It is not a refutation of clj-protobuf's fix** — their 0.99×→8.48�
 stands on their own bench, and the magnitudes are consistent, since their +23%
 single-thread figure is encode alone and encode is a fraction of a request path.
 Settling it needs more cores than any node here can give one arm.
+
+**The ceiling was the node (2026-09-09/10):** every ceiling above one connection
+was the host. Measured with `soak/node-cpu.sh`, reading Talos's native per-CPU
+counters (`talosctl get cpustat`) — Prometheus here has no node-exporter, and
+nothing needed deploying. At the 2-connection ceiling the node ran **4.11 of 4
+cores** against the pod's 1.49 of 2; at **one** connection the arm is pinned at
+**0.90 cores with the node at 3.04 of 4**, so the single-connection cap is real
+and the ceiling above it was not. Two phenomena that had been written up as one.
+**Stands:** a connection binds to one event loop, so a client holding one
+multiplexed connection to a multi-core pod uses one core of it. **Withdrawn:**
+"capacity stops climbing at two connections" as a property of connections — two
+connections is where this node ran out on 1 KB messages, and at the tiny tier the
+same two carry 55,405 msg/s. **Unaffected:** the monitor A/B and its after-run,
+which are paired comparisons on one node with one variable; only the description
+of the wall they both hit was wrong. Caveat for all future multi-core work here:
+a 2-core arm on a 4-core node with a 1.83-core resident load has ~2.2 cores of
+real headroom, and the node column must sit beside the pod column or the same
+artefact gets measured again.
