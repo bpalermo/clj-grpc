@@ -1124,6 +1124,14 @@ limit is the lower of the client's `mcs` and the server's advertised
 
 ## The connection sweep, 2026-09-09 — connections carry capacity, up to a ceiling that is not the cores
 
+> **Corrected below** (see "The ceiling was the node"). The ceiling this section
+> could not explain was the HOST running out of CPU: 4.11 of the node's 4 cores
+> while the pod held 1.49 of its 2-core quota, invisible to every counter used
+> here. The single-connection cap stands and was re-measured with the host ruled
+> out. "Capacity stops climbing at two connections" does not: two connections is
+> where this 4-core node ran out on 1 KB messages, and at the tiny tier the same
+> two connections carry 55,405 msg/s.
+
 The section above ended by saying the deliberate connection experiment had not run: the
 knob was inert, so the rule rested on connection counts observed after the fact and their
 correlation with cores consumed. Chart 0.2.19 made `--max-concurrent-streams` reach the
@@ -1251,6 +1259,12 @@ Logs and `tables.md` in `soak/results/2026-09-09-connections/`.
 
 ## A shared monitor on the encode path, 2026-09-09 — a cap, but not the ceiling
 
+> **Still valid as a paired comparison**, and its framing of the ceiling is
+> corrected below. Both arms ran on the same node under the same conditions with
+> one variable, so the interop-over-compiled gap stands. What was wrong was
+> treating the wall both arms hit as a property of the server: it was the host
+> at 4.11 of 4 cores. See "The ceiling was the node".
+
 The connection sweep left one question open: what holds a two-connection arm to
 ~22,900 msg/s while half a core sits idle and nothing is throttled. The
 clj-protobuf session answered a different question — why their own encode
@@ -1353,6 +1367,14 @@ Logs, tables and banked flamebearers (both arms and the driver, via
 `soak/save-flames.sh`) in `soak/results/2026-09-09-lock-ab/`.
 
 ## The ceiling is global, 2026-09-09 — invariant to connections, with a core to spare
+
+> **Superseded below** (see "The ceiling was the node"). The conclusion — a
+> global cap upstream of the codec, with real idle capacity — was right that the
+> cap was not the codec and not per-connection, and wrong about the "core to
+> spare". That core was not spare: the node was at 4.11 of 4 while the pod's
+> cgroup showed 1.47 of 2. The pre-registered threshold that would have caught
+> this (cores above 1.85 reads as saturation) was applied to the POD's cores,
+> which is the only number the harness had at the time.
 
 The monitor A/B ended with the interop arm plateauing at ~25,000 msg/s on 1.47
 of 2 cores while touching neither of clj-protobuf's `synchronizedMap`s. So the
@@ -1559,6 +1581,157 @@ Logs, tables, banked flamebearers for both arms and the driver, and the
 prediction file in `soak/results/2026-09-09-after-0.2.5/` and
 `soak/results/2026-09-10-after/`.
 
+## The ceiling was the node, 2026-09-09/10 — and one finding survives it
+
+Every ceiling this campaign chased above one connection was the host running out
+of CPU. The pod's cgroup could not see it, so the search went to the codec, to
+connection counts, to a monitor in clj-protobuf, and to flow control — none of
+which were it.
+
+### The instrument that was missing
+
+talos-main is Raspberry Pi CM5 on a DeskPi Super6C: **4 cores and 8 GB per
+node**, flannel VXLAN between them. Kernel network work — softirq receive, VXLAN
+encap and decap, the CNI path — is charged to the **node**, not to the pod's
+cgroup. So an arm holding 1.49 of a 2-core quota is idle only *inside* the
+cgroup, and every CPU figure this campaign published measures one side of that
+line.
+
+Prometheus here has no node-exporter (the `kubernetes-*` scrape jobs are off),
+but Talos publishes per-CPU counters natively, so this needed nothing deployed:
+`talosctl get cpustat` returns user/system/softIrq/irq/idle per CPU, cumulative,
+differenced across a step window by the new `soak/node-cpu.sh`.
+
+### What the node was doing at the ceiling
+
+Compiled arm, `:direct`, 2 CPU, two connections, chart 0.2.21 — the run that
+reproduces 23,294 msg/s against the previous 23,316, 0.1% apart:
+
+| offered | delivered | arm cores (of 2) | node cores (of 4) | softirq |
+|---|---|---|---|---|
+| 200 (warmup) | 200 | 0.18 | 1.83 | 0.23 |
+| 20,000 | 18,106 | 1.50 | 3.03 | 0.53 |
+| 24,000 | 21,822 | 1.46 | 3.14 | 0.55 |
+| **28,000** | **23,294** | **1.51** | **4.11** | 0.72 |
+| 32,000 | 23,073 | 1.48 | 4.02 | 0.68 |
+
+**The node is full.** 4.11 of 4 cores, with the pod at 1.51 of 2 and essentially
+no cgroup throttling. The arithmetic closes: the node's resident workloads —
+aether's fleet, kubelet, containerd, the profiler DaemonSets — cost **1.83
+cores** with the arm idle, leaving ~2.2 free; the arm takes 1.49 and the kernel
+networking it generates another 0.72, and 1.49 + 0.72 = 2.21.
+
+So the "half a core idle" was never idle capacity. It was a pod that could not be
+scheduled more often because every core on the host was busy — runqueue
+contention, which no pod-level counter in this harness can see. `cpu0` carried
+0.55 of the 0.72 softirq, the single-NIC-receive-queue pattern, but never
+saturated on its own: the limit is the node in aggregate, not that one core.
+
+### It is per-byte cost, not per-message
+
+The tiny tier is 7 bytes of protobuf against realistic's 1,025. Same arm, same
+two connections, ramp raised:
+
+| offered | delivered | p50 ms | ms/msg | arm cores | node cores |
+|---|---|---|---|---|---|
+| 32,000 | 31,999 | 1.90 | 0.031 | 0.99 | 2.59 |
+| 48,000 | 47,875 | 2.49 | 0.023 | 1.10 | 3.58 |
+| 56,000 | **55,405** | 2.72 | 0.020 | 1.11 | 3.51 |
+
+**55,405 msg/s against realistic's 23,294 — 2.4×** — using *less* arm CPU (1.11
+vs 1.49), leaving the node unsaturated, at p50 2.72 ms rather than 209 ms. Tiny
+never found its own ceiling: 55,405 delivered of 56,000 offered, knee 589/s, and
+the single-worker driver at 0.77 of its one core was closer to binding than the
+arm was.
+
+So the ceiling is **per-byte work**, and the node saturating at 1 KB is its
+consequence. Not wakeups, not framing, not packet rate, not message rate.
+
+**And the per-byte work is in the JVM, not in the overlay.** The two runs price
+it directly, which matters because "the wall scales with bytes through a VXLAN
+overlay" and "the wall scales with bytes inside the server" call for completely
+different work:
+
+| | realistic | tiny | change |
+|---|---|---|---|
+| bytes on the wire | 24 MiB/s | 0.89 MiB/s | **÷27** |
+| node softirq | 0.72 cores | 0.67 cores | **−7%** |
+| arm CPU per message | 64.0 µs | 20.0 µs | **÷3.2** |
+
+Kernel time barely moved while the bytes fell by a factor of 27 — and it carried
+2.4× the messages doing it — so the overlay is not where the payload cost lands
+at these rates. The arm is: **44 µs of extra CPU per message** at the realistic
+shape. That is far too expensive to be byte movement, and matches this
+document's earlier attribution — descriptor-driven protobuf field access,
+persistent-map construction, and the copies between them.
+
+**Do not read that as a per-byte rate.** Dividing by the 1,018-byte difference
+gives ~43 ns/byte, and the number would mispredict any other message. The cost
+tracks **field count and value construction, not size**: the realistic tier is
+about 30 leaf values (name; the payload's id, title, body, created_at, score;
+and eight items of sku/qty/price), and most of its bulk is a *single* filler
+string in `body`. A 1 KB message that is one large string would cost far less
+than this one; a 300-byte message spread over 60 fields could cost more.
+clj-protobuf's own corpus shows the same decoupling — two 443-byte shapes with
+51 leaves against a 273-byte shape with 61, ordering by leaves rather than
+bytes.
+
+So the durable form is: **at production shape, roughly two thirds of the arm's
+per-message CPU is payload handling, and it scales with structure rather than
+size.** The codec and the value representation own it, not the transport and not
+the network. Anyone sizing from this should count fields, not bytes.
+
+### The finding that survives: one connection is one event loop
+
+The same arm at **one** connection, where the host is not the constraint:
+
+| offered | delivered | arm cores (of 2) | node cores (of 4) |
+|---|---|---|---|
+| 12,000 | 11,985 | 0.89 | 2.59 |
+| 16,000 | 14,667 | 0.90 | 2.35 |
+| 20,000 | **15,203** | **0.90** | **3.04** |
+
+15,203 against the earlier `conn1`'s 15,294 — 0.6% apart, so the codec version
+does not move it and the harness reproduces a fourth time.
+
+**The arm is pinned at 0.90 cores with a full node core to spare.** That is not a
+host limit. A connection binds to one event loop, `:direct` runs the handler on
+that loop, and the loop is the constraint — exactly as "Two cores" claimed, now
+measured with the host ruled out rather than assumed away.
+
+### What this corrects
+
+The two phenomena come apart, and they had been written up as one:
+
+| | arm | node | cause |
+|---|---|---|---|
+| 1 connection | 0.90 of 2 | 3.04 of 4 | **real**: one connection, one event loop |
+| 2+ connections | 1.49 of 2 | 4.11 of 4 | **the host ran out of CPU** |
+
+- **Stands:** the single-connection cap, and with it the sizing rule that a
+  client holding one multiplexed connection to a multi-core pod uses one core
+  of it.
+- **Withdrawn:** "capacity stops climbing at two connections" as a property of
+  connections. Two connections is where *this node* ran out, on 1 KB messages.
+  At the tiny tier the same two connections carry 55,405 msg/s.
+- **Withdrawn:** the connection-invariance of 2/4/8 as evidence for a global
+  serialization point. Those runs were all pinned by the same host ceiling.
+- **Unaffected as comparisons:** the monitor A/B and its after-run. Those are
+  paired — same node, same conditions, one variable — so the interop-over-
+  compiled gap and its narrowing stand. What was wrong was calling the wall
+  they both hit a property of the server.
+
+### The caveat that now applies to every 2-CPU number here
+
+**A 2-core arm on a 4-core node with a 1.83-core resident load has ~2.2 cores of
+real headroom, not 2.** The quota was never the binding constraint; the host
+was. Any future multi-core work on this cluster needs the node column beside the
+pod column, or it will measure the same artefact again — which is what
+`soak/node-cpu.sh` is for.
+
+Logs, tables, node and driver samples, banked flamebearers and the prediction
+file in `soak/results/2026-09-09-node-network/`.
+
 ## The ladder — what is on the table for an existing REST service
 
 Per core, 1-CPU pods, one instrument, each rung differing from the one
@@ -1692,11 +1865,21 @@ What the three columns say:
   `getFeatures`, `SmallSortedMap`, `FieldSet` and `CodedInputStream.readPrimitiveField`
   beneath `clj_protobuf.codec/proto-value` and `get-field`: descriptor-driven
   field access, not generated-class parsing. That is exactly what the typed
-  `interop=true` emitter path (protoc-gen-clojure 0.5.1) removes — the
-  clj-protobuf suite measured its encode at 412 ns vs 650 ns for this path
-  on a deep shape — so ~0.04–0.05 ms per request looked to be on the table on
-  both gRPC arms without touching the transport. **That prediction was tested
-  and did not hold**, and what replaced it took two attempts:
+  `interop=true` emitter path (protoc-gen-clojure 0.5.1) removes — this
+  document originally cited "412 ns vs 650 ns on a deep shape" from the
+  clj-protobuf suite — so ~0.04–0.05 ms per request looked to be on the table on
+  both gRPC arms without touching the transport.
+
+  **Provenance, since this line was briefly and wrongly flagged as unsourced:**
+  it is real and it is clj-protobuf's own. Measured 2026-09-06 while fixing the
+  emitter's setter type hints — quick criterium, JDK 21, protobuf-java 4.35.1,
+  generated Java classes on the classpath, "standard" being the codec's hinted
+  arm at clj-protobuf 0.1.11. Unpublished scratch rather than a released bench
+  table, and corroborated by today's tables: deep encode now reads interop
+  384–408 ns / 368 B against hinted 692–756 ns / 552 B, same shape and same
+  allocation figures on a different protobuf-java.
+
+  **And the prediction it supported was tested and did not hold**, twice over:
     - *First reading* (see "The typed read path" below): with reads typed too,
       the interop arm cost 3–8% MORE CPU than the compiled codec on unary and
       was level on streaming, returning 15–45% lower p50 instead. The frames
@@ -1714,6 +1897,26 @@ What the three columns say:
   What survives both readings is the lesson: a microbenchmark's encode delta
   did not survive contact with a whole request path, and the first explanation
   offered for that was incomplete.
+
+  Knowing the provenance adds two further reasons, independent of both above and
+  of each other.
+
+  **It is an ENCODE-only measurement, and the prediction was about a path that
+  is half reads.** The same note records "decode is unchanged by design
+  (interop's `proto->X` still calls `codec/get-field`)". So a whole-request CPU
+  forecast was extrapolated from the write path at a moment when the read half
+  provably had not changed. The typed read path did not arrive until
+  protoc-gen-clojure 0.6.0, two versions later.
+
+  **And the shape it came from is near the bottom of the corpus, not merely at
+  the small end.** `deep` is **27 bytes and 5 leaf scalars** — the third
+  smallest of seven. The corpus as a whole tops out at 443 bytes, 61 leaf
+  scalars and ~50 nested message constructions (leaf count alone understates it:
+  `repeated-messages` builds 21 messages for its 61 scalars, `map-heavy` ~50
+  entry messages a scalar count cannot see), and **no shape combines a
+  production-sized body with production field density**. The term this campaign
+  showed to be dominant at production shape — field count and value construction
+  on a ~1 KB nested message — is the one those shapes barely exercise.
 - **Streaming's gain over unary is visible as grpc-java shrinking** from
   8.4% (0.023 ms) to 3.8% (0.006 ms): per-RPC setup, headers, trailers and
   `GrpcHttp2InboundHeaders` handling amortized over a stream. Netty's share
