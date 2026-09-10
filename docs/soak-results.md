@@ -12,16 +12,28 @@ and 8 GB per node, flannel VXLAN, one arm per worker. Harness and procedure in
 
 ## The ladder — what a REST service gains from each switch
 
-Per core, 1 KB protobuf / 1.3 KB JSON bodies, `:direct` executor, each rung
-differing from the one below in exactly one thing, measured on one instrument
-(Envoy Nighthawk).
+1 KB protobuf / 1.3 KB JSON bodies, `:direct` executor, each rung differing from
+the one below in exactly one thing, measured on one instrument (Envoy
+Nighthawk). Chart 0.2.21, 2026-09-10, with node CPU sampled at every step to
+confirm the host was never the limit.
 
-| rung | switch | capacity per core | vs REST | migration cost |
+| rung | switch | capacity per 1-CPU pod | vs REST | migration cost |
 |---|---|---|---|---|
-| 0 | REST HTTP/1.1 | ~750 rps | — | — |
-| 1 | → h2c | ~750 rps | 1× | a server config flag; clients must speak h2c |
-| 2 | → gRPC unary | ~4,700 rps | 6× | new clients, protobuf schema, serialization; API shape unchanged |
-| 3 | → gRPC stream | ~10,000 msg/s | 13× | API contract: persistent connections, ordering, backpressure |
+| 0 | REST HTTP/1.1 | ~790 rps | — | — |
+| 1 | → h2c | ~800 rps | 1× | a server config flag; clients must speak h2c |
+| 2 | → gRPC unary | ~6,700 rps | **8.5×** | new clients, protobuf schema, serialization; API shape unchanged |
+| 3 | → gRPC stream | ~13,600 msg/s | **17×** | API contract: persistent connections, ordering, backpressure |
+
+These replace an earlier table reading 750 / 750 / 4,700 (6×) / 10,000 (13×),
+which was wrong in two independent ways:
+
+- **Its gRPC ramps stopped at the knee instead of past it** — unary ended at
+  4,800 offered with 1.2% shedding, streaming at 10,000 with 0.2%. Neither had
+  found a ceiling. Re-running *that same chart* with a longer ramp gives ~5,400
+  rather than ~4,700. The REST ramps did run past their knee, so the error was
+  one-sided and the ratios were understated.
+- **The stack has since got ~9% cheaper per request** (attributed below), which
+  near the knee buys more than 9% of capacity.
 
 **Rung 1 is free and worthless.** h2c buys nothing in capacity, costs 3–16% more
 CPU per request, improves p99 by 10–30% on realistic bodies — and is *worse*
@@ -32,8 +44,13 @@ at the client (517 rps and p99 40 s at 1,200 offered, against h1's steady ~750).
 cores at the same load. p99 drops an order of magnitude below REST's knee, and
 the arm plateaus gracefully under the client queue that collapses h2c.
 
-**Rung 3 adds 1.8× on top of rung 2** (3× on tiny bodies) for a different API
-contract.
+**Rung 3 adds ~2× on top of rung 2** for a different API contract.
+
+**Read every figure as "at least".** Two runs of the identical chart an hour
+apart put the same arm at 5,999 and 5,240 rps at 6,000 offered — one climbed to
+6,000 through a ramp, the other started there. Run-to-run and ramp-shape spread
+on this harness is ~15%, wider than many of the differences this repo has drawn
+conclusions from.
 
 ## Connections, not just cores
 
@@ -91,25 +108,48 @@ stream. What remains is protobuf, syscalls and copies — the message itself.
 
 ## Levers, each measured separately
 
-Independent of the rung, roughly additive over disjoint code:
+**Three of these are already in the ladder figures above and are not additive to
+them.** The chart enables direct linking and the compiled codec by default and
+the arms run `:direct`, so a current measurement contains all three. Each figure
+says what you lose by turning one off, not what you gain by adding it.
 
-| lever | worth |
-|---|---|
-| `-Dclojure.compiler.direct-linking=true` on the arm's JVM | 3–13% CPU per request, 3–17% per streamed message |
-| clj-protobuf's descriptor-compiled codec | 6–17% CPU; protobuf 26% of samples → 2% |
-| `:direct` over the default virtual-thread executor | 15–27% CPU, ~25% stream capacity, p50 roughly half |
-| protoc-gen-clojure `interop=true` | core-count dependent — see below |
+| lever | worth | already in the ladder? |
+|---|---|---|
+| `-Dclojure.compiler.direct-linking=true` on the arm's JVM | 3–16% CPU per request, 3–17% per streamed message | **yes**, chart default since 0.2.12 |
+| clj-protobuf's descriptor-compiled codec | 6–17% CPU; protobuf 26% of samples → 2% | **yes**, chart default |
+| `:direct` over the default virtual-thread executor | 15–27% CPU, ~25% stream capacity, p50 roughly half | **yes**, arm default |
+| protoc-gen-clojure `interop=true` | core-count dependent — see below | no, a separate arm |
+
+### Where the ladder's numbers come from
+
+Chart 0.2.8 → 0.2.21 made unary ~9% cheaper per request. Bracketed by running
+each intermediate chart on the same ramp and node, node CPU sampled to confirm
+none was host-limited:
+
+| chart | delivered @6,000 | ms/req @5,000 | what it adds |
+|---|---|---|---|
+| 0.2.8 | 5,472 | 0.172 | the stack the previous ladder came from |
+| 0.2.9 | 5,734 | 0.167 | protobuf-java 4.36.1, clj-protobuf 0.2.2 |
+| 0.2.21, linking off | 5,875 | 0.164 | everything else since |
+| 0.2.19, linking on | 5,973 | 0.155 | direct linking |
+| 0.2.21, linking on | 5,999 | 0.156 | clj-protobuf 0.2.5 |
+
+Direct linking is the largest single contributor at ~4.9% of per-request CPU,
+protobuf-java 4.36.1 ~2.9%, everything else ~1.8%. **clj-protobuf 0.2.2 → 0.2.5
+is nil** — 0.0 / −0.9 / −1.0 / +0.6 / −2.1% across the ramp.
 
 **Typed interop is not a simple win.** At 1 CPU it costs 3–8% more CPU than the
 compiled codec on unary and returns 15–45% lower p50 — a latency-for-CPU trade,
 because conversion moves out of the codec into protoc's generated accessors
 almost one for one rather than disappearing. At 2 cores the sign flips and
-interop is 10–14% *cheaper*. Two process-wide `Collections.synchronizedMap`s on
-clj-protobuf's compiled per-message path, removed in 0.2.5, account for part of
-that difference — **how much is unresolved**, because the run that measured it
-was host-limited (below) and the gap narrowed only from 9.7% to 7.5% rather than
-closing to the 1–4% predicted. Treat the ~3% CPU improvement it showed as a
-floor.
+interop is 10–14% *cheaper*, on a host that was saturated for both arms.
+
+Two process-wide `Collections.synchronizedMap`s on clj-protobuf's compiled
+per-message path, removed in 0.2.5, were the leading explanation for that flip.
+**They are not it: measured at 1 CPU with the host demonstrably idle, 0.2.2
+against 0.2.5 is nil.** Upstream's +23% is on encode alone, and encode is a small
+enough share of a request path that an uncontended monitor does not surface in
+it. What explains the sign flip is open.
 
 **Not levers:** protobuf-java 4.36.1 vs 4.35.1, Netty leak detection, pinning the
 VT scheduler to one carrier — each ≤ 4% or nil.
@@ -151,13 +191,26 @@ indistinguishable from the server's. `soak/client-cpu.sh` samples the Job's own
 cgroup and reports **throttling**, not usage — the spin idle strategy busy-waits,
 so usage alone says nothing.
 
-**Take plateaus from the upper steps of a ramp.** The first step after warmup
-under-reads by ~10%: the same arm at the same connection count gave 19,598 msg/s
-reached through a ramp and 17,731 as a ramp's first step. Five minutes at 200 rps
-does not warm a JVM for 20,000.
+**Take plateaus from the upper steps of a ramp — and run the ramp past the
+knee.** Two distinct errors, both committed here:
 
-**Assert, do not compute.** Connection counts come from `upstream_cx_total`;
-image identity from the running pods, not the chart.
+*The first step after warmup under-reads by 10–13%.* The same arm at the same
+connection count gave 19,598 msg/s reached through a ramp and 17,731 as a ramp's
+first step; unary gave 5,999 and 5,240 at 6,000 offered the same way. Five
+minutes at 200 rps does not warm a JVM for 20,000.
+
+*A ramp that stops at the knee has not found the ceiling.* The previous ladder's
+gRPC ramps ended at 1.2% and 0.2% shedding and were read as plateaus; the same
+charts with longer ramps deliver ~15% more. A knee counter that has just begun
+moving means keep going, not stop.
+
+**Assert, do not compute — and read the pod, not the values.** Connection counts
+come from `upstream_cx_total`; image identity and JVM flags from the running
+pods. `helm --set-string directLinking.enabled=false` sets the *string*
+`"false"`, which Helm's `and` treats as true: the flag stays on and a lever run
+silently compares a setting against itself. `LADDER_EXTRA_SET` goes through
+`--set-string` and so cannot express a boolean false; an empty value works, and
+only the pod proves it.
 
 **One arm per JVM.** Several arms in one process turns the encode call site
 megamorphic, which is worth about as much as the effects being measured.
