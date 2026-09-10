@@ -1865,11 +1865,17 @@ What the three columns say:
   `getFeatures`, `SmallSortedMap`, `FieldSet` and `CodedInputStream.readPrimitiveField`
   beneath `clj_protobuf.codec/proto-value` and `get-field`: descriptor-driven
   field access, not generated-class parsing. That is exactly what the typed
-  `interop=true` emitter path (protoc-gen-clojure 0.5.1) removes — the
-  clj-protobuf suite measured its encode at 412 ns vs 650 ns for this path
-  on a deep shape — so ~0.04–0.05 ms per request looked to be on the table on
-  both gRPC arms without touching the transport. **That prediction was tested
-  and did not hold**, and what replaced it took two attempts:
+  `interop=true` emitter path (protoc-gen-clojure 0.5.1) removes — this
+  document originally cited "412 ns vs 650 ns on a deep shape" from the
+  clj-protobuf suite — so ~0.04–0.05 ms per request looked to be on the table on
+  both gRPC arms without touching the transport.
+
+  **That citation cannot be sourced.** It entered here on 2026-09-07 and the
+  clj-protobuf session cannot find it in their published benchmark; their
+  comparable deep-shape figure is 840 → 478 ns, not 650 → 412. Treat the pair as
+  unsourced and do not propagate it.
+
+  **And the prediction it supported was tested and did not hold**, twice over:
     - *First reading* (see "The typed read path" below): with reads typed too,
       the interop arm cost 3–8% MORE CPU than the compiled codec on unary and
       was level on streaming, returning 15–45% lower p50 instead. The frames
@@ -1887,6 +1893,16 @@ What the three columns say:
   What survives both readings is the lesson: a microbenchmark's encode delta
   did not survive contact with a whole request path, and the first explanation
   offered for that was incomplete.
+
+  There is a third reason it could not have survived, independent of both: the
+  benchmark was measuring a regime this service does not operate in. Confirmed
+  with the clj-protobuf session against their re-measured corpus — no shape
+  exceeds **443 bytes, 61 leaf scalars, or ~50 nested message constructions**,
+  and **no shape combines a production-sized body with production field
+  density**. The term this campaign later showed to be dominant at production
+  shape — field count and value construction on a ~1 KB nested message — is the
+  one those shapes barely exercise. A prediction drawn from the small end of a
+  curve was extrapolated to the far end of it.
 - **Streaming's gain over unary is visible as grpc-java shrinking** from
   8.4% (0.023 ms) to 3.8% (0.006 ms): per-RPC setup, headers, trailers and
   `GrpcHttp2InboundHeaders` handling amortized over a stream. Netty's share
