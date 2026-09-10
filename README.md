@@ -225,7 +225,7 @@ Everything above is loopback. [`docs/soak-results.md`](docs/soak-results.md)
 carries the on-cluster campaign results — multi-hour soaks, capacity ramps past
 the knee, and streaming throughput on identical 1-CPU pods. The ladder on 1 KB
 bodies: REST HTTP/1.1 ~790 rps → h2c ~800 → **gRPC unary ~6,700 (8.5×) → bidi
-stream ~13,600 msg/s (17×)**. Two earlier headlines here were
+stream ~14,400 msg/s (18×)**. Two earlier headlines here were
 withdrawn by that campaign rather than merely refined: the 7.5×/16× streaming
 ratios were the old k6 driver under-measuring unary, and "the executor trade
 inverts with load" was a loopback artifact — on a 1-CPU pod `:direct` leads on
