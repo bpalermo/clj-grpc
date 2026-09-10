@@ -1870,10 +1870,14 @@ What the three columns say:
   clj-protobuf suite — so ~0.04–0.05 ms per request looked to be on the table on
   both gRPC arms without touching the transport.
 
-  **That citation cannot be sourced.** It entered here on 2026-09-07 and the
-  clj-protobuf session cannot find it in their published benchmark; their
-  comparable deep-shape figure is 840 → 478 ns, not 650 → 412. Treat the pair as
-  unsourced and do not propagate it.
+  **Provenance, since this line was briefly and wrongly flagged as unsourced:**
+  it is real and it is clj-protobuf's own. Measured 2026-09-06 while fixing the
+  emitter's setter type hints — quick criterium, JDK 21, protobuf-java 4.35.1,
+  generated Java classes on the classpath, "standard" being the codec's hinted
+  arm at clj-protobuf 0.1.11. Unpublished scratch rather than a released bench
+  table, and corroborated by today's tables: deep encode now reads interop
+  384–408 ns / 368 B against hinted 692–756 ns / 552 B, same shape and same
+  allocation figures on a different protobuf-java.
 
   **And the prediction it supported was tested and did not hold**, twice over:
     - *First reading* (see "The typed read path" below): with reads typed too,
@@ -1894,15 +1898,25 @@ What the three columns say:
   did not survive contact with a whole request path, and the first explanation
   offered for that was incomplete.
 
-  There is a third reason it could not have survived, independent of both: the
-  benchmark was measuring a regime this service does not operate in. Confirmed
-  with the clj-protobuf session against their re-measured corpus — no shape
-  exceeds **443 bytes, 61 leaf scalars, or ~50 nested message constructions**,
-  and **no shape combines a production-sized body with production field
-  density**. The term this campaign later showed to be dominant at production
-  shape — field count and value construction on a ~1 KB nested message — is the
-  one those shapes barely exercise. A prediction drawn from the small end of a
-  curve was extrapolated to the far end of it.
+  Knowing the provenance adds two further reasons, independent of both above and
+  of each other.
+
+  **It is an ENCODE-only measurement, and the prediction was about a path that
+  is half reads.** The same note records "decode is unchanged by design
+  (interop's `proto->X` still calls `codec/get-field`)". So a whole-request CPU
+  forecast was extrapolated from the write path at a moment when the read half
+  provably had not changed. The typed read path did not arrive until
+  protoc-gen-clojure 0.6.0, two versions later.
+
+  **And the shape it came from is near the bottom of the corpus, not merely at
+  the small end.** `deep` is **27 bytes and 5 leaf scalars** — the third
+  smallest of seven. The corpus as a whole tops out at 443 bytes, 61 leaf
+  scalars and ~50 nested message constructions (leaf count alone understates it:
+  `repeated-messages` builds 21 messages for its 61 scalars, `map-heavy` ~50
+  entry messages a scalar count cannot see), and **no shape combines a
+  production-sized body with production field density**. The term this campaign
+  showed to be dominant at production shape — field count and value construction
+  on a ~1 KB nested message — is the one those shapes barely exercise.
 - **Streaming's gain over unary is visible as grpc-java shrinking** from
   8.4% (0.023 ms) to 3.8% (0.006 ms): per-RPC setup, headers, trailers and
   `GrpcHttp2InboundHeaders` handling amortized over a stream. Netty's share
