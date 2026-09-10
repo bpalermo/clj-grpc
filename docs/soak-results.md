@@ -125,7 +125,7 @@ says what you lose by turning one off, not what you gain by adding it.
 | `-Dclojure.compiler.direct-linking=true` on the arm's JVM | 3–16% CPU per request, 3–17% per streamed message | **yes**, chart default since 0.2.12 |
 | clj-protobuf's descriptor-compiled codec | 6–17% CPU; protobuf 26% of samples → 2% | **yes**, chart default |
 | `:direct` over the default virtual-thread executor | 15–27% CPU, ~25% stream capacity, p50 roughly half | **yes**, arm default |
-| protoc-gen-clojure `interop=true` | executor dependent — see below | no, a separate arm |
+| protoc-gen-clojure `interop=true` | p50 −9 to −45%; CPU level at 1 CPU — see below | no, a separate arm |
 
 ### Where the ladder's numbers come from
 
@@ -145,27 +145,31 @@ Direct linking is the largest single contributor at ~4.9% of per-request CPU,
 protobuf-java 4.36.1 ~2.9%, everything else ~1.8%. **clj-protobuf 0.2.2 → 0.2.5
 is nil** — 0.0 / −0.9 / −1.0 / +0.6 / −2.1% across the ramp.
 
-**Typed interop's CPU cost tracks the executor, not the core count.** It wins
-p50 by 6–45% everywhere measured. On CPU, the three measurements line up on
-executor and not on cores:
+**Typed interop wins latency; its CPU difference is inside the noise floor.**
+It wins p50 by 9–45% everywhere measured. On CPU, paired at 1 CPU on one node on
+the current chart:
 
-| measurement | executor | interop CPU vs compiled |
-|---|---|---|
-| 1 CPU, chart 0.2.18 | virtual threads | **+3–8%** |
-| 2 cores, charts 0.2.19 / 0.2.21 | `:direct` | −10 to −14% |
-| 1 CPU, chart 0.2.21 | `:direct` | −4.1% |
+| measurement | executor | interop CPU | interop p50 |
+|---|---|---|---|
+| 1 CPU, chart 0.2.18 | virtual threads | +3–8% | −15 to −45% |
+| 1 CPU, chart 0.2.21 | virtual threads | **−3.3%** | −10.3% |
+| 1 CPU, chart 0.2.21 | `:direct` | **−4.1%** | −9.3% |
+| 2 cores, charts 0.2.19 / 0.2.21 | `:direct` | −10 to −14% | lower |
 
-This document previously called that a core-count dependent sign flip. It is
-not: core count was confounded with executor choice. Every run showing interop
-dearer was on virtual threads; every run showing it cheaper was on `:direct`.
-Under `:direct`, interop is level-to-cheaper on CPU at both core counts and wins
-p50 at every step.
+This document has now offered three explanations for the +3–8%: core count, then
+clj-protobuf's removed monitors, then the executor. **None survived.** The
+monitors measure nil at 1 CPU; the executor makes no difference to the
+comparison (−3.3% under VT against −4.1% under `:direct`); and core count does
+not separate the measurements either.
 
-Two caveats. The `:direct` runs are on later charts than the VT one, so the
-executor is not perfectly isolated — a VT pair on the current chart would settle
-it and has not been run. And −4.1% sits inside this harness's ~15% spread; the
-p50 advantage (−2 to −20%, negative at all five steps) is the more consistent
-half.
+The likeliest explanation is the dullest, and it was in the original write-up all
+along: that measurement was taken as "two independent pairs, run 40 minutes
+apart, because the effect is the size of this harness's noise". It was
+noise-sized when published, this harness's spread is ~15%, and on remeasurement
+the sign reverses at similar magnitude. **Treat interop's CPU cost at 1 CPU as
+level.** The p50 advantage is the robust half — negative at every step of every
+pair — and the larger 2-core CPU advantage has not been retested since the host
+saturation was found.
 
 clj-protobuf's two process-wide `Collections.synchronizedMap`s, removed in
 0.2.5, were once the leading explanation for the supposed flip. They are not:
