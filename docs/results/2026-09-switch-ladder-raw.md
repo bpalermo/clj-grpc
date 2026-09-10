@@ -1660,15 +1660,26 @@ different work:
 
 Kernel time barely moved while the bytes fell by a factor of 27 — and it carried
 2.4× the messages doing it — so the overlay is not where the payload cost lands
-at these rates. The arm is: 44 µs of extra CPU per message for ~1,018 extra
-bytes, about **43 ns per byte**. That is far too expensive to be byte movement
-(a copy is nearer 1 ns/byte), and matches this document's earlier attribution —
-descriptor-driven protobuf field access, persistent-map construction, and the
-copies between them.
+at these rates. The arm is: **44 µs of extra CPU per message** at the realistic
+shape. That is far too expensive to be byte movement, and matches this
+document's earlier attribution — descriptor-driven protobuf field access,
+persistent-map construction, and the copies between them.
 
-The practical consequence for the ladder: on 1 KB bodies roughly two thirds of
-the arm's per-message CPU is payload handling, and it is the codec and the value
-representation that own it, not the transport and not the network.
+**Do not read that as a per-byte rate.** Dividing by the 1,018-byte difference
+gives ~43 ns/byte, and the number would mispredict any other message. The cost
+tracks **field count and value construction, not size**: the realistic tier is
+about 30 leaf values (name; the payload's id, title, body, created_at, score;
+and eight items of sku/qty/price), and most of its bulk is a *single* filler
+string in `body`. A 1 KB message that is one large string would cost far less
+than this one; a 300-byte message spread over 60 fields could cost more.
+clj-protobuf's own corpus shows the same decoupling — two 443-byte shapes with
+51 leaves against a 273-byte shape with 61, ordering by leaves rather than
+bytes.
+
+So the durable form is: **at production shape, roughly two thirds of the arm's
+per-message CPU is payload handling, and it scales with structure rather than
+size.** The codec and the value representation own it, not the transport and not
+the network. Anyone sizing from this should count fields, not bytes.
 
 ### The finding that survives: one connection is one event loop
 
