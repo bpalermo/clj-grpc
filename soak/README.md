@@ -95,6 +95,21 @@ soak/client-cpu.sh --report job.log /tmp/client.tsv
 exactly like the server's. `spin` busy-waits, so the number to read is
 throttling rather than usage.
 
+And for anything above 1 CPU, sample the **node** too:
+
+```sh
+soak/node-cpu.sh /tmp/node.tsv &                 # alongside the ladder
+soak/node-cpu.sh --report job.log /tmp/node.tsv
+```
+
+Kernel softirq, VXLAN encap and the CNI path are charged to the node, not the
+pod's cgroup, so an arm can be pinned by a full host while its own cgroup shows
+idle capacity — which is exactly what happened to the 2-CPU campaigns here. On
+these 4-core nodes a resident load of ~1.8 cores leaves **~2.2 cores of real
+headroom**, so a 2-CPU quota is not the binding constraint. Prometheus has no
+node-exporter; this reads Talos's native per-CPU counters and needs nothing
+deployed.
+
 Ramps: unary tiny 200→2,400 req/s in 12 × 110 s steps (August's shape);
 unary realistic 100→1,600; streams 400→4,800 msg/s at 20 streams and
 4,000→16,000 at 40, as in August.

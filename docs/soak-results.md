@@ -1,55 +1,20 @@
-# Soak & campaign results — index
+# Soak & campaign results
 
-On-cluster measurements of the soak arms (gRPC native-image, gRPC JVM,
-REST/Pedestal — identical 1-CPU/1-Gi Guaranteed pods on talos-main, one arm
-per worker; harness and procedure in [`../soak/README.md`](../soak/README.md)).
-Each entry links the full results file and states its conclusion. Everything is
-1-CPU unless an entry says otherwise — the two-cores and connection-sweep
-entries ran at 2 CPU, which is where per-core figures stop being the whole
-story.
+What on-cluster measurement has established about running Clojure gRPC and
+REST services, stated as conclusions. The reasoning that produced them, the
+corrections along the way, and the runs that were superseded are in git
+history; this file is what is currently true.
 
-## [Executor grid](results/2026-08-29-executor-grid.md) — 2026-08-29
+Measurements are from talos-main: Raspberry Pi CM5 on a DeskPi Super6C, 4 cores
+and 8 GB per node, flannel VXLAN, one arm per worker. Harness and procedure in
+[`../soak/README.md`](../soak/README.md); raw per-step tables under
+[`results/`](results/).
 
-**Conclusion:** at low utilization the executor choice is a CPU/median-vs-
-tail trade — gRPC `:executor :direct` cuts CPU 35% and wins every p50 but
-roughly doubles p99 (event-loop convoying with deferred flushes), while
-Jetty's virtual-thread dispatch costs nothing on any axis and memory is
-invariant to threading everywhere. Zero failures in ~4.6M requests.
+## The ladder — what a REST service gains from each switch
 
-## [Unary capacity ramps](results/2026-08-29-capacity-raw.md) — 2026-08-29/30
-
-**Conclusion:** max sustainable goodput per identical 1-CPU pod — gRPC-JVM
-`:direct` ~2,140 req/s, VT ~2,060, native ~1,550, REST ~960 followed by
-queue-death (no admission control). At equal resources gRPC sustains 2.2×
-(JVM) / 1.6× (native) REST's throughput, and the executor trade inverts
-above ~75% utilization: `:direct` wins goodput *and* tails. A prototype
-grpc-netty `drainNow()` patch cut deep-saturation p99 64%
-([grpc-java#13012](https://github.com/grpc/grpc-java/issues/13012)).
-
-## [Streaming capacity](results/2026-08-30-streaming-raw.md) — 2026-08-30
-
-**Conclusion:** persistent bidi echo streams move ~15,000–16,000 msg/s on
-one core — ~7.5× the unary gRPC plateau and ~16× REST — with p50 <2 ms
-through 8,000 msg/s. The executors split only near saturation, where
-`:direct` holds p99 2–2.5× lower and keeps delivering at 16k: the per-
-message dispatch is the one cost streaming cannot amortize on the VT
-executor. The full doctrine across every measured regime: **VT wins only
-low-utilization unary tails; `:direct` wins high-load unary, all streaming,
-capacity, and CPU — provided handlers never block.**
-
-## [Switch ladder](results/2026-09-switch-ladder-raw.md) — 2026-09-06/09
-
-**Question:** what does an existing REST service gain from each switch it
-could make — transport (HTTP/1.1 → h2c), protocol (REST/JSON → gRPC unary),
-interaction model (unary → stream) — with every adjacent pair of arms
-differing in exactly one thing, on one instrument (Nighthawk), at two payload
-sizes, with CPU attribution from the arms' own cgroup counters and Pyroscope.
-
-### Where it landed
-
-Per core, 1-CPU pods, `:direct` executor, 1 KB protobuf / 1.3 KB JSON bodies.
-These are the re-baselined numbers (agent-free images, compiled codec); the
-phase-by-phase figures they replaced are under "the record" below.
+Per core, 1 KB protobuf / 1.3 KB JSON bodies, `:direct` executor, each rung
+differing from the one below in exactly one thing, measured on one instrument
+(Envoy Nighthawk).
 
 | rung | switch | capacity per core | vs REST | migration cost |
 |---|---|---|---|---|
@@ -58,215 +23,178 @@ phase-by-phase figures they replaced are under "the record" below.
 | 2 | → gRPC unary | ~4,700 rps | 6× | new clients, protobuf schema, serialization; API shape unchanged |
 | 3 | → gRPC stream | ~10,000 msg/s | 13× | API contract: persistent connections, ordering, backpressure |
 
-Rung 1 is free and worthless. **Rung 2 is where the money is** — a service at
-REST's knee today frees ~85% of its cores at the same load. Rung 3 adds 1.8×
-on top of rung 2 (3× on tiny bodies) for a contract change.
+**Rung 1 is free and worthless.** h2c buys nothing in capacity, costs 3–16% more
+CPU per request, improves p99 by 10–30% on realistic bodies — and is *worse*
+under overload, because unserved work parks inside the server instead of failing
+at the client (517 rps and p99 40 s at 1,200 offered, against h1's steady ~750).
 
-**The caveat that governs rungs 2 and 3: those are per-core numbers, and a
-gRPC arm only reaches them if the client opens enough connections.** A
-connection binds to one event loop, and under `:direct` that loop also runs
-the handler, so a client holding one multiplexed connection to a multi-core
-pod uses one core of it — measured flat at 0.79–0.92 cores on a two-core arm
-however hard it was pushed. A second connection took that arm from 15,294 to
-22,866 msg/s; further connections bought nothing and cost 13% more CPU. Size
-clients by connection count as well as pod cores, and assert the count from
-`upstream_cx_total` rather than computing it from flags.
+**Rung 2 is where the money is.** A service at REST's knee frees ~85% of its
+cores at the same load. p99 drops an order of magnitude below REST's knee, and
+the arm plateaus gracefully under the client queue that collapses h2c.
 
-### Levers on top of the ladder
+**Rung 3 adds 1.8× on top of rung 2** (3× on tiny bodies) for a different API
+contract.
 
-Each measured separately on the gRPC arms, all independent of the rung:
+## Connections, not just cores
 
-- **Direct linking** (`-Dclojure.compiler.direct-linking=true` on the arm's
-  JVM): 5–13% of CPU per request, 3–17% per streamed message, `Var.getRawRoot`
-  from 3.2% of samples to 1.1%. One property on an unchanged image, and it
-  reaches code rules_clj's build-time `direct_linking` cannot — clj-protobuf
-  ships to Clojars as source, so its codec is compiled at load time and an
-  ahead-of-time caller may not link into it at all. The two linking levers
-  cover disjoint code; neither covers both.
-- **clj-protobuf's descriptor-compiled codec**: 6–17% CPU (more on streams,
-  more under VT), protobuf from 26% of samples to 2%, syscalls then the top
-  cost at 35%.
-- **protoc-gen-clojure `interop=true`** (0.6.0, typed reads and writes): a
-  latency-for-CPU trade, not the ceiling it was aimed at — 3–8% more CPU on
-  unary, level on streaming, 15–45% lower p50 throughout.
-- **Executor**: the library's default virtual threads cost 15–27% more CPU
-  per request and ~25% stream capacity against `:direct`, p50 roughly double.
-  The gap *widens* with cores rather than closing.
+**A connection binds to one event loop, and under `:direct` that loop also runs
+the handler — so one multiplexed connection to a multi-core pod uses one core of
+it.** Measured directly: an arm pinned at 0.90 cores across a whole ramp while
+the node it ran on had a full core spare.
 
-Not levers: protobuf-java 4.36.1 vs 4.35.1, Netty leak detection, pinning the
+The ladder's figures are therefore **per core**, and turning them into pod
+capacity means sizing the client's connection count as well as the pod's CPU. A
+single-connection client against a four-core pod gets one core of it.
+
+More connections raise the ceiling; how far is untested here, because this
+hardware saturates before the software does (below). Drive connection count with
+`--max-concurrent-streams` — `--connections` is a circuit breaker, and exceeding
+it produces `upstream_cx_overflow` rather than more connections — and assert the
+result from `upstream_cx_total` rather than computing it from flags.
+
+## Where the CPU goes
+
+**REST's extra ~1.3 ms per request is not JSON** (0.06 ms). It is the
+Pedestal/Clojure request pipeline (0.41 ms of persistent maps, Vars and seqs,
+plus 0.24 ms of Java collections and locks), Jetty (0.17 ms), and 8× the syscall
+time of gRPC — per-connection `writev` and thread-pool hand-offs against one
+multiplexed socket on an event loop.
+
+**On the gRPC arms at production shape, roughly two thirds of per-message CPU is
+payload handling** — 64 µs per message at ~1 KB against 20 µs at 7 bytes. It is
+owned by the codec and the value representation, not the transport and not the
+network: between those two tiers, bytes on the wire fall 27× while node softirq
+falls 7% carrying 2.4× the messages.
+
+**That cost scales with structure, not size.** clj-protobuf's corpus shows cost
+tracking field count rather than bytes: two shapes at the *same* 443 bytes carry
+51 and 101 leaf values and cost in proportion to the leaves, not the bytes. Field
+**kind** matters second — shapes that construct nested messages (repeated message
+fields, and map fields, whose entries *are* two-field messages) run about 165 ns
+per leaf against 109–120 for flat scalar shapes, so roughly 1.4–1.5×, not a
+multiple.
+
+The working model is `(field count × per-field cost, weighted by kind) + (bytes ×
+a small per-byte term)`, and at production shape the first dominates: per-field
+cost is 100–165 ns while a large single value is order 1 ns/byte.
+
+So: **count fields, weight nested messages and map entries somewhat above
+scalars, and treat one large value as nearly free per byte.** Note also that the
+44 µs delta above is not purely a field-count result — the realistic tier's bulk
+is one 800-byte filler string, so it carries a real per-byte term too.
+
+**Streaming's gain over unary is grpc-java shrinking**, 8.4% of samples (0.023
+ms) to 3.8% (0.006 ms): per-RPC setup, headers and trailers amortized over a
+stream. What remains is protobuf, syscalls and copies — the message itself.
+
+**JIT and GC are 5–7% everywhere** at steady state.
+
+## Levers, each measured separately
+
+Independent of the rung, roughly additive over disjoint code:
+
+| lever | worth |
+|---|---|
+| `-Dclojure.compiler.direct-linking=true` on the arm's JVM | 3–13% CPU per request, 3–17% per streamed message |
+| clj-protobuf's descriptor-compiled codec | 6–17% CPU; protobuf 26% of samples → 2% |
+| `:direct` over the default virtual-thread executor | 15–27% CPU, ~25% stream capacity, p50 roughly half |
+| protoc-gen-clojure `interop=true` | core-count dependent — see below |
+
+**Typed interop is not a simple win.** At 1 CPU it costs 3–8% more CPU than the
+compiled codec on unary and returns 15–45% lower p50 — a latency-for-CPU trade,
+because conversion moves out of the codec into protoc's generated accessors
+almost one for one rather than disappearing. At 2 cores the sign flips and
+interop is 10–14% *cheaper*. Two process-wide `Collections.synchronizedMap`s on
+clj-protobuf's compiled per-message path, removed in 0.2.5, account for part of
+that difference — **how much is unresolved**, because the run that measured it
+was host-limited (below) and the gap narrowed only from 9.7% to 7.5% rather than
+closing to the 1–4% predicted. Treat the ~3% CPU improvement it showed as a
+floor.
+
+**Not levers:** protobuf-java 4.36.1 vs 4.35.1, Netty leak detection, pinning the
 VT scheduler to one carrier — each ≤ 4% or nil.
 
-### Where the cost goes
+**Direct linking reaches code the build-time attribute cannot.** clj-protobuf
+ships to Clojars as source *by design*, so its codec is compiled by Clojure at
+load time and an ahead-of-time caller may not link into it at all. rules_clj's
+`direct_linking` attribute and the runtime property cover disjoint code; neither
+covers both. The runtime property is process-wide and **stops `with-redefs`
+working on linked call sites** — a deployment decision, not a build flag, and a
+good way to be surprised in staging.
 
-**Attribution (Pyroscope, agent overhead measured at +1–6% CPU):** REST's extra
-~1.3 ms per request is not JSON (0.06 ms) but the Pedestal/Clojure request
-pipeline (0.41 ms of persistent maps, Vars and seqs, plus 0.24 ms of Java
-collections and locks), Jetty (0.17 ms) and 8× the syscall time of gRPC
-(per-connection `writev` and thread-pool hand-offs vs one multiplexed socket
-on an event loop). On the gRPC arms the largest software cost, 20–26%, is
-protobuf's descriptor-driven field access under the clj-protobuf codec, which
-the typed `interop=true` path removes; streaming's gain shows as grpc-java
-shrinking from 8% to 4% of samples.
+### Two more things worth knowing before sizing
 
-### Answered
+**The codec has a kill switch.** `-Dclj-protobuf.codec=dynamic` swaps the
+compiled codec for `DynamicMessage` at load — one env change, no rebuild. It is
+how the codec was A/B'd on a live chart here, and it is the fallback if the codec
+is ever suspected.
 
-**Why a gRPC streaming arm stopped at ~25,000 msg/s with half a core idle: the
-NODE was out of CPU.** talos-main is Raspberry Pi CM5, 4 cores per node, flannel
-VXLAN; kernel softirq and VXLAN work is charged to the node, not the pod's
-cgroup. At the ceiling the node sat at **4.11 of 4 cores** while the pod held
-1.49 of its 2-core quota with no throttling — runqueue contention no pod-level
-counter here could see. The resident load (aether's fleet, kubelet, containerd,
-profilers) is 1.83 cores, leaving ~2.2; the arm's 1.49 plus 0.72 of kernel
-networking is 2.21. It is per-BYTE cost, not per-message: at 7-byte messages the
-same two connections carry **55,405 msg/s** with the node unsaturated. See the
-connection-sweep and monitor entries below, whose ceilings this corrects.
+**Handles are arm-specific.** `proto->X` given a message from another arm throws
+rather than converting. It only matters if a service mixes arms, and it is silent
+until it is not.
 
-### The record
+## Measuring on this cluster
 
-**Phase A (transport, 2026-09-06):** HTTP/1.1 → h2c on the
-same Pedestal/Jetty service buys nothing in capacity — both saturate the core
-at ~925 rps (tiny) / ~750 rps (1.3 KB JSON) — costs 3–16% more CPU per
-request below the knee, improves p99 by 10–30% on the realistic body, and
-admits ~6–9% more at the knee. Under overload h2c is worse: with thousands of
-streams parked at the server it has no flat plateau on 1 KB bodies (517/s and
-p99 40 s at 1,200 offered vs h1's steady ~750/s), because unserved work sits
-inside the server instead of failing at the client.
+Method that carries forward, each of which cost a wrong conclusion to learn:
 
-**Phase B (protocol, 2026-09-07):** h2c → gRPC unary on the same core is
-where the gain is — 6× capacity on a 1 KB body (knee 600 → 4,000 rps,
-plateau ~750 → ~4,600) and ~11× on tiny (knee ~10,500 rps per core, by a
-two-worker cross-check; the ladder's own tables stop at 8,000 with the arm at
-0.76 core), CPU per request 3× lower at the same offered rate, p99 an order of
-magnitude lower below REST's knee, and a graceful plateau under the client
-queue that collapsed h2c. August's k6 "knee" at ~2,140 was the driver; the
-server's unary capacity is 2–4× higher.
+**Read the node, not just the pod.** Kernel softirq, VXLAN encap and the CNI
+path are charged to the node, not the pod's cgroup. A 2-core arm on these
+4-core nodes has **~2.2 cores of real headroom**, not 2, because resident
+workloads take ~1.8 — and at saturation the node ran 4.11 of 4 cores while the
+pod's cgroup showed 1.49 of 2 with no throttling. A pod that cannot be
+*scheduled* looks exactly like a pod with spare capacity. Prometheus here has no
+node-exporter; `soak/node-cpu.sh` reads Talos's native per-CPU counters instead
+and needs nothing deployed.
 
-**Phase C (interaction model, 2026-09-07):** unary → persistent bidi streams
-buys 1.8× more on 1 KB messages (knee ~6,500, plateau ~8,200 msg/s per core,
-bounded by the `:direct` event loop at 0.87 core, never the quota) and ~3×
-on tiny (> 31,500 msg/s, arm at 0.82 core), at 15–25% less CPU per message,
-p50 ≤ 3 ms to the knee, a flat plateau under any overload with zero errors.
-August's 7.5×/16× streaming ratios were the k6 driver under-measuring unary;
-on one instrument they are 1.8×/11×.
+**Check the driver.** A load generator out of CPU produces a plateau
+indistinguishable from the server's. `soak/client-cpu.sh` samples the Job's own
+cgroup and reports **throttling**, not usage — the spin idle strategy busy-waits,
+so usage alone says nothing.
 
-**Re-baseline (2026-09-07/08) — supersedes the Phase B and C capacities
-above.** Measured again with the library's default virtual-thread executor
-(grpc-java will not optimise `:direct` further), agent-free images and
-clj-protobuf's descriptor-compiled codec, the gRPC rows were understated:
-`:direct` streaming reaches **~10,000 msg/s per core at 0.085 ms/msg** (was
-~8,200 at 0.107) and unary ~4,700 at 0.177 ms, giving the table at the top of
-this section. Most of the 40–70% VT penalty the older images showed was a
-JVMTI agent loaded even when disabled; the real figure is 15–27%.
+**Take plateaus from the upper steps of a ramp.** The first step after warmup
+under-reads by ~10%: the same arm at the same connection count gave 19,598 msg/s
+reached through a ramp and 17,731 as a ramp's first step. Five minutes at 200 rps
+does not warm a JVM for 20,000.
 
-**Typed reads (2026-09-08/09, protoc-gen-clojure 0.6.0):** with `interop=true` now
-typing reads as well as writes, it costs 3–8% more CPU than the compiled codec on
-unary and is level on streaming (1–4%, inside the noise), while returning 15–45%
-lower p50 throughout — two independent pairs, since the effect is noise-sized. The
-frames show why: the typed path moves conversion work out of the codec into protoc's
-generated accessors almost one for one (streaming self time 9.4% → 3.2% codec,
-3.0% → 9.1% protobuf-java, sum unchanged).
+**Assert, do not compute.** Connection counts come from `upstream_cx_total`;
+image identity from the running pods, not the chart.
 
-**Two cores (2026-09-09):** capacity follows CONNECTIONS, not cores — but only up to a
-point; the connection sweep below found where the climb stops. `:direct`
-streaming sits flat at 0.78–0.90 cores across the whole ramp on a two-core pod —
-the second core idle — because a stream's connection binds to one event loop and
-`:direct` runs the handler on it; unary, whose pool grows to eight connections under
-load, reaches 1.33. Virtual threads do spread a single connection (1.12 → 1.57 cores) and
-still lose, spending 1.57 cores for 14,438 msg/s where `:direct` spends 0.90 for
-15,250; the executor gap widens with cores (44–80% more CPU) rather than closing.
-Scaling is 1.2–1.6x, not 2x, and for streaming the gain is GC moving off the request
-path rather than parallel service.
+**One arm per JVM.** Several arms in one process turns the encode call site
+megamorphic, which is worth about as much as the effects being measured.
 
-**Connection sweep (2026-09-09):** the deliberate experiment the Two cores entry called for,
-now that chart 0.2.19 lets `--max-concurrent-streams` reach the streaming branch. One
-`:direct` arm on two cores, 40 streams, `--concurrency 1`, only the connection count
-moving (1/2/4/8, asserted from `upstream_cx_total`). **One connection is flat at
-0.79-0.92 cores however hard it is pushed** — the second core simply cannot be reached.
-**Capacity then stops climbing at two connections:** 15,294 msg/s at 0.92 cores with one,
-22,866 at 1.49 with two, and then nothing more — 4 and 8 connections deliver within 2% of
-what 2 delivers while burning 13% more CPU (1.67-1.69 cores) and taking throttling for it.
-Two connections is both the ceiling and the cheapest way to reach it (15,390 msg/s per core
-against 13,340 at four). **The ceiling is NOT a CPU ceiling and stays unexplained:** the
-two-connection arm holds it with half a core idle and 0.1 s throttled, so "two connections"
-matching "two cores" is a coincidence on this evidence, not a mechanism. The driver held
-0.49-0.64 of its one core throughout, so no step was client-limited.
+**Before trusting a measurement, ask what the instrument is structurally
+incapable of charging to the thing being measured — and whether the answer in
+hand is one it would produce either way.** A CPU profile cannot charge time to a
+parked thread. A pod cgroup cannot charge softirq to the pod. Each silence in
+this campaign was read as absence at least once.
 
-**Reading any ramp in these results:** the first step after warmup under-reads
-by ~10% (same arm, same connections, 19,598 msg/s when reached through a ramp
-vs 17,731 as a ramp's first step, with 4× the server-side throttling). Take
-plateaus from the upper steps, never the first. Five minutes at 200 rps does
-not warm a 1-CPU JVM for 20,000. That warmup is a deployment concern — warm
-before serving — rather than a protocol one, and it is not on the ladder.
+## Raw data
 
-**A shared monitor on the encode path (2026-09-09):** the clj-protobuf session
-found two process-wide `Collections.synchronizedMap`s on the compiled codec's
-per-message path (one from `.build` via `initialized?`, one the parser registry
-on decode); `synchronizedMap` locks reads, so a cache hit still serializes, and
-`.build` scales **0.31x** from 1 to 8 threads where `.buildPartial` scales
-cleanly. Tested on-cluster as a paired A/B — same session, same chart, both
-arms pinned to `:direct` (the chart leaves the interop arm on virtual threads,
-which would have made the executor a second variable). **Interop is 10-14%
-cheaper per message at every step and peaks 9.7% higher** (25,287 vs 23,051
-msg/s), and the banked profiles show the call chain present in one arm and
-absent in the other: `SynchronizedMap.get` 0.85% of CPU on the compiled arm,
-nil on interop, where protoc's own `Item.isInitialized` does the same check for
-0.04%. Corroborated by a sign flip — at 1 CPU the same images measured interop
-3-8% DEARER, and contention cannot exist on one core. **But the monitor is a
-cap, not the ceiling:** interop plateaus at ~25,000 with 1.47 of 2 cores and
-half a core idle while touching neither monitor. Measured against clj-protobuf
-0.2.2; the fix is upstream as `3ce5ed7` (clj-protobuf #40) but was unreleased
-at the time, so this is a before-number and the gap should shrink toward the
-1-4% the 1-CPU runs showed once 0.2.5 ships.
+Per-step tables, Job logs, banked flamegraphs and node/driver samples:
 
-**The ceiling is global (2026-09-09):** the monitor A/B left the interop arm
-plateauing at ~25,000 msg/s on 1.47 of 2 cores while touching neither
-`synchronizedMap`, so the monitor was a cap and not the ceiling. Tested by
-transposing the sign-flip instrument from cores to connections — cores are the
-cleaner variable and no node here has three free for one arm; the idle
-half-core is what makes connections discriminate, since a per-connection bound
-would climb with spare CPU available and a global one would not. **Flat: peaks
-of 25,287 / 25,428 / 24,224 msg/s at 2 / 4 / 8 connections**, a spread of −4.2%
-to +0.6%, at 1.47 / 1.63 / 1.60 cores, driver at 0.60–0.66 of one core
-throughout. Predicted in advance (flat at ~25,000, cores 1.6–1.7) with
-thresholds fixed before the runs, including the one that matters most — cores
-above 1.85 would have read as plain CPU saturation rather than a serialization
-point. So the compiled arm's flatness across connections was never the monitor;
-the monitor only set the level ~10% lower. Adding connections past two is worse
-than useless: 2 → 4 bought 0.6% for 11% more CPU, 4 → 8 lost 4%.
+- [`results/2026-09-switch-ladder-raw.md`](results/2026-09-switch-ladder-raw.md)
+  — the switch-ladder campaign: transport, protocol and interaction-model
+  phases, the re-baseline, executor and codec comparisons, multi-core and
+  connection work, and the node-saturation finding.
+- [`results/2026-08-30-streaming-raw.md`](results/2026-08-30-streaming-raw.md),
+  [`results/2026-08-29-capacity-raw.md`](results/2026-08-29-capacity-raw.md),
+  [`results/2026-08-29-executor-grid.md`](results/2026-08-29-executor-grid.md)
+  — August work on a different instrument (k6 and a custom Clojure driver).
+  **Its cross-protocol ratios were withdrawn**: the driver was under-measuring
+  unary by 2–4×, which is why the ladder above was re-measured on one
+  instrument. The within-arm executor and latency observations stand.
 
-**The monitor removed (2026-09-09, clj-protobuf 0.2.5 / chart 0.2.21):** the
-after-number for the entry above, read against bands fixed before the chart
-existed. The fix is verified in the arm at frame level —
-`Collections$SynchronizedMap.get` was 0.85% of CPU on 0.2.2 and is ABSENT on
-0.2.5, with `initialized?` still running lock-free. The interop control did not
-move (peak 25,287 → 25,054, CPU/msg identical to three decimals at four of five
-steps), so nothing drifted across two chart versions and two image builds, and
-the compiled arm's change is attributable. **Compiled CPU per message fell ~3%
-consistently** and peak throughput rose 1.2%, inside noise. **The gap narrowed
-from +9.7% to +7.5% on throughput and from −11.1% to −8.6% on CPU per message —
-about two points, and still far above the predicted 1–4%.** That is the
-pre-registered MIDDLE band and it was fixed in advance as **ambiguous**: two
-cores may be too few for a fix whose measured win is a 1→8 thread scaling curve,
-or something other than the monitor contributes, and this run cannot separate
-those. **It is not a refutation of clj-protobuf's fix** — their 0.99×→8.48×
-stands on their own bench, and the magnitudes are consistent, since their +23%
-single-thread figure is encode alone and encode is a fraction of a request path.
-Settling it needs more cores than any node here can give one arm.
+## A known gap in the evidence
 
-**The ceiling was the node (2026-09-09/10):** every ceiling above one connection
-was the host. Measured with `soak/node-cpu.sh`, reading Talos's native per-CPU
-counters (`talosctl get cpustat`) — Prometheus here has no node-exporter, and
-nothing needed deploying. At the 2-connection ceiling the node ran **4.11 of 4
-cores** against the pod's 1.49 of 2; at **one** connection the arm is pinned at
-**0.90 cores with the node at 3.04 of 4**, so the single-connection cap is real
-and the ceiling above it was not. Two phenomena that had been written up as one.
-**Stands:** a connection binds to one event loop, so a client holding one
-multiplexed connection to a multi-core pod uses one core of it. **Withdrawn:**
-"capacity stops climbing at two connections" as a property of connections — two
-connections is where this node ran out on 1 KB messages, and at the tiny tier the
-same two carry 55,405 msg/s. **Unaffected:** the monitor A/B and its after-run,
-which are paired comparisons on one node with one variable; only the description
-of the wall they both hit was wrong. Caveat for all future multi-core work here:
-a 2-core arm on a 4-core node with a 1.83-core resident load has ~2.2 cores of
-real headroom, and the node column must sit beside the pod column or the same
-artefact gets measured again.
+Every shape in clj-protobuf's benchmark is 9–443 bytes on the wire. The ceilings
+are 443 bytes, 101 leaf values, and ~50 nested message constructions, and no
+single shape combines a production-sized body with production field density.
+Figures cited from that suite therefore describe the small end of the curve —
+including the deep-shape encode pair (412 vs 650 ns) quoted in the raw results,
+which is 27 bytes and 5 leaf scalars.
+
+The gap is symmetric, which is why it went unnoticed on both sides: **this
+campaign's payload has production size without production field density, and
+clj-protobuf's corpus has neither.** Closing it needs a ~1 KB nested shape, and
+ideally a pair holding bytes constant while varying field count so the two axes
+separate.
