@@ -22,7 +22,7 @@ confirm the host was never the limit.
 | 0 | REST HTTP/1.1 | ~790 rps | — | — |
 | 1 | → h2c | ~800 rps | 1× | a server config flag; clients must speak h2c |
 | 2 | → gRPC unary | ~6,700 rps | **8.5×** | new clients, protobuf schema, serialization; API shape unchanged |
-| 3 | → gRPC stream | ~13,600 msg/s | **17×** | API contract: persistent connections, ordering, backpressure |
+| 3 | → gRPC stream | ~14,400 msg/s | **18×** | API contract: persistent connections, ordering, backpressure |
 
 These replace an earlier table reading 750 / 750 / 4,700 (6×) / 10,000 (13×),
 which was wrong in two independent ways:
@@ -45,6 +45,13 @@ cores at the same load. p99 drops an order of magnitude below REST's knee, and
 the arm plateaus gracefully under the client queue that collapses h2c.
 
 **Rung 3 adds ~2× on top of rung 2** for a different API contract.
+
+**The two gRPC rungs stop for different reasons**, and the difference is
+connections. Streaming runs on one connection and holds 0.82–0.85 cores at every
+step even when pushed to 20,000 offered with 5,771/s shedding — one event loop,
+one core's worth, exactly the cap measured directly at two cores. Unary opens
+eight connections under load and reaches 0.94–0.98 cores of its quota. Neither
+was host-limited: the node sat at 2.3–3.1 of 4 throughout.
 
 **Read every figure as "at least".** Two runs of the identical chart an hour
 apart put the same arm at 5,999 and 5,240 rps at 6,000 offered — one climbed to
@@ -118,7 +125,7 @@ says what you lose by turning one off, not what you gain by adding it.
 | `-Dclojure.compiler.direct-linking=true` on the arm's JVM | 3–16% CPU per request, 3–17% per streamed message | **yes**, chart default since 0.2.12 |
 | clj-protobuf's descriptor-compiled codec | 6–17% CPU; protobuf 26% of samples → 2% | **yes**, chart default |
 | `:direct` over the default virtual-thread executor | 15–27% CPU, ~25% stream capacity, p50 roughly half | **yes**, arm default |
-| protoc-gen-clojure `interop=true` | core-count dependent — see below | no, a separate arm |
+| protoc-gen-clojure `interop=true` | executor dependent — see below | no, a separate arm |
 
 ### Where the ladder's numbers come from
 
@@ -138,18 +145,31 @@ Direct linking is the largest single contributor at ~4.9% of per-request CPU,
 protobuf-java 4.36.1 ~2.9%, everything else ~1.8%. **clj-protobuf 0.2.2 → 0.2.5
 is nil** — 0.0 / −0.9 / −1.0 / +0.6 / −2.1% across the ramp.
 
-**Typed interop is not a simple win.** At 1 CPU it costs 3–8% more CPU than the
-compiled codec on unary and returns 15–45% lower p50 — a latency-for-CPU trade,
-because conversion moves out of the codec into protoc's generated accessors
-almost one for one rather than disappearing. At 2 cores the sign flips and
-interop is 10–14% *cheaper*, on a host that was saturated for both arms.
+**Typed interop's CPU cost tracks the executor, not the core count.** It wins
+p50 by 6–45% everywhere measured. On CPU, the three measurements line up on
+executor and not on cores:
 
-Two process-wide `Collections.synchronizedMap`s on clj-protobuf's compiled
-per-message path, removed in 0.2.5, were the leading explanation for that flip.
-**They are not it: measured at 1 CPU with the host demonstrably idle, 0.2.2
-against 0.2.5 is nil.** Upstream's +23% is on encode alone, and encode is a small
-enough share of a request path that an uncontended monitor does not surface in
-it. What explains the sign flip is open.
+| measurement | executor | interop CPU vs compiled |
+|---|---|---|
+| 1 CPU, chart 0.2.18 | virtual threads | **+3–8%** |
+| 2 cores, charts 0.2.19 / 0.2.21 | `:direct` | −10 to −14% |
+| 1 CPU, chart 0.2.21 | `:direct` | −4.1% |
+
+This document previously called that a core-count dependent sign flip. It is
+not: core count was confounded with executor choice. Every run showing interop
+dearer was on virtual threads; every run showing it cheaper was on `:direct`.
+Under `:direct`, interop is level-to-cheaper on CPU at both core counts and wins
+p50 at every step.
+
+Two caveats. The `:direct` runs are on later charts than the VT one, so the
+executor is not perfectly isolated — a VT pair on the current chart would settle
+it and has not been run. And −4.1% sits inside this harness's ~15% spread; the
+p50 advantage (−2 to −20%, negative at all five steps) is the more consistent
+half.
+
+clj-protobuf's two process-wide `Collections.synchronizedMap`s, removed in
+0.2.5, were once the leading explanation for the supposed flip. They are not:
+measured at 1 CPU with the host demonstrably idle, 0.2.2 against 0.2.5 is nil.
 
 **Not levers:** protobuf-java 4.36.1 vs 4.35.1, Netty leak detection, pinning the
 VT scheduler to one carrier — each ≤ 4% or nil.
