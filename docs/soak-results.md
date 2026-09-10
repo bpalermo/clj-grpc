@@ -66,20 +66,22 @@ owned by the codec and the value representation, not the transport and not the
 network: between those two tiers, bytes on the wire fall 27× while node softirq
 falls 7% carrying 2.4× the messages.
 
-**That cost scales with structure, not size** — but "count fields" is a priority,
-not a model. clj-protobuf's own corpus shows two shapes at the *same* 443 bytes
-and the *same* 51 leaf values differing 3× in cost per leaf (109 vs 322 ns),
-because field **kind** dominates: a map entry is an entry message and costs about
-3× a scalar, with nested message fields in between. The working model is
-`(field count × per-field cost, weighted by kind) + (bytes × a small per-byte
-term)`, and at production shape the first term dominates because per-field cost
-is 100–300 ns while a large single value is order 1 ns/byte.
+**That cost scales with structure, not size.** clj-protobuf's corpus shows cost
+tracking field count rather than bytes: two shapes at the *same* 443 bytes carry
+51 and 101 leaf values and cost in proportion to the leaves, not the bytes. Field
+**kind** matters second — shapes that construct nested messages (repeated message
+fields, and map fields, whose entries *are* two-field messages) run about 165 ns
+per leaf against 109–120 for flat scalar shapes, so roughly 1.4–1.5×, not a
+multiple.
 
-So: **count fields, weight maps and nested messages above scalars, and treat one
-large value as nearly free per byte.** A reader who takes "count fields"
-literally will misprice a map-heavy message by 3×. Note also that the 44 µs delta
-above is not purely a field-count result — the realistic tier's bulk is one
-800-byte filler string, so it carries a real per-byte term too.
+The working model is `(field count × per-field cost, weighted by kind) + (bytes ×
+a small per-byte term)`, and at production shape the first dominates: per-field
+cost is 100–165 ns while a large single value is order 1 ns/byte.
+
+So: **count fields, weight nested messages and map entries somewhat above
+scalars, and treat one large value as nearly free per byte.** Note also that the
+44 µs delta above is not purely a field-count result — the realistic tier's bulk
+is one 800-byte filler string, so it carries a real per-byte term too.
 
 **Streaming's gain over unary is grpc-java shrinking**, 8.4% of samples (0.023
 ms) to 3.8% (0.006 ms): per-RPC setup, headers and trailers amortized over a
@@ -185,7 +187,7 @@ Per-step tables, Job logs, banked flamegraphs and node/driver samples:
 ## A known gap in the evidence
 
 Every shape in clj-protobuf's benchmark is 9–443 bytes on the wire. The ceilings
-are 443 bytes, 61 leaf scalars, and ~50 nested message constructions, and no
+are 443 bytes, 101 leaf values, and ~50 nested message constructions, and no
 single shape combines a production-sized body with production field density.
 Figures cited from that suite therefore describe the small end of the curve —
 including the deep-shape encode pair (412 vs 650 ns) quoted in the raw results,

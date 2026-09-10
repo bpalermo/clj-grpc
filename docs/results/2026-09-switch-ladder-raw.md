@@ -1570,10 +1570,8 @@ What the three columns say:
 
   **And the shape it came from is near the bottom of the corpus, not merely at
   the small end.** `deep` is **27 bytes and 5 leaf scalars** — the third
-  smallest of seven. The corpus as a whole tops out at 443 bytes, 61 leaf
-  scalars and ~50 nested message constructions (leaf count alone understates it:
-  `repeated-messages` builds 21 messages for its 61 scalars, `map-heavy` ~50
-  entry messages a scalar count cannot see), and **no shape combines a
+  smallest of seven. The corpus as a whole tops out at 443 bytes, 101 leaf
+  values and ~50 nested message constructions, and **no shape combines a
   production-sized body with production field density**. The term this campaign
   showed to be dominant at production shape — field count and value construction
   on a ~1 KB nested message — is the one those shapes barely exercise.
