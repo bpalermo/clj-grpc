@@ -9,7 +9,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: clj-grpc-soak
 binaryData:
-  {{- range $tier := list "tiny" "realistic" }}
+  {{- range $tier := list "tiny" "realistic" "dense" }}
   {{- range $ext := list "json" "pb" }}
   {{ printf "%s.%s" $tier $ext }}: {{ $.Files.Get (printf "clj-grpc-soak/files/bodies/%s.%s" $tier $ext) | b64enc }}
   {{- end }}
