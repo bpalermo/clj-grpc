@@ -1,8 +1,19 @@
 # Raw per-step tables — switch ladder, September 2026
 
-Backing data for the switch-ladder entry in [`../soak-results.md`](../soak-results.md);
-procedure in [`../../soak/README.md`](../../soak/README.md). All three phases
-ran 2026-09-06/07; the ladder summary is at the end.
+**Backing data, not conclusions.** What these runs established is stated in
+[`../soak-results.md`](../soak-results.md); procedure in
+[`../../soak/README.md`](../../soak/README.md).
+
+Read this file for the numbers behind a claim, not for the claim. Some runs here
+were later superseded — the August-instrument ratios, the pre-re-baseline gRPC
+capacities, and every ceiling measured at 2 CPU, which turned out to be the host
+saturating rather than the software. The conclusions file says which; git history
+has the reasoning that got there.
+
+One caveat applies to every table below: **a step's first row after warmup
+under-reads by ~10%**, and the 2-CPU runs were taken on a node whose resident
+load left ~2.2 of its 4 cores free, so their arms were host-limited above one
+connection.
 
 ## Setup
 
@@ -433,7 +444,6 @@ client-limited flag). Tiny-tier streaming capacity is therefore **> 30,000
 msg/s per core**, with the latency knee (p99 crossing 400 ms) at ~30,000;
 the 18,000 step is the first-step JIT outlier.
 
-
 ### R8 — 20 streams, realistic (`nh-grpc-jvm-grpc-stream-realistic-09071237`)
 
 | offered | delivered/s | p50 ms | p99 ms | p999 ms | knee/s | cpu ms/req | throttled s | heap MB | rss MB |
@@ -454,7 +464,6 @@ Delivered in full to 4,800 msg/s (1.5/s deferred at the top) with the arm at
 (200–330 ms) is wider than tiny's at the same rates and, with throttling
 under a second per step, reads as per-stream buffering of 1 KB messages
 behind HTTP/2 flow control rather than CPU. R8b looks for the knee.
-
 
 ### R8b — 40 streams, realistic, 4,000→16,000 (`nh-grpc-jvm-grpc-stream-realistic-09071341`)
 
@@ -981,23 +990,7 @@ out of the codec's closures into protoc's generated accessors. That is what
 `interop=true` now is on a service: the same CPU spent elsewhere, bought back as latency
 because less of it sits inline on the request.
 
-### What this settles
-
-`interop=true` is a **latency-for-CPU trade on unary and a free latency win on
-streaming**. It is not the ceiling the descriptor-compiled codec was aimed at: the codec
-matches it on streaming CPU and beats it on unary CPU while giving up p50. Which arm a
-service prefers follows from what binds it — a 1-CPU pod near its knee keeps the codec,
-a latency-sensitive service with cores to spare takes interop — and the two are now
-within a few percent of each other rather than a factor apart, which is the real change
-since 0.5.1.
-
 ## Two cores, 2026-09-09 — capacity follows connections, not cores
-
-> Superseded in part by the connection sweep below, which ran the deliberate experiment
-> this section could not. The single-connection cap holds exactly as stated. The general
-> rule does not: on this arm the climb stopped at two connections, with half a core still
-> idle, and further connections cost CPU for no throughput. What stops it there is not
-> established — see that section.
 
 Every number above this line is one core. That is the right shape for comparing arms
 and the wrong one for sizing a pod, so this section asks the question the plan never
@@ -1050,87 +1043,18 @@ Driver unchanged on worker-05. Both executors, unary and 40-stream, profiled.
 
 ### The finding: the second core is not used by a single connection
 
-`cpu ms/req x delivered/s` is cores consumed. Reading that rather than throughput is
-what makes the mechanism visible:
-
 | offered | `:direct` unary (8 conns) | VT unary (8 conns) | `:direct` stream (1 conn) | VT stream (1 conn) |
 |---|---|---|---|---|
 | low | 0.86 cores | 1.25 | 0.78 | 1.12 |
 | mid | 1.02 | 1.57 | 0.89 | 1.39 |
 | top | **1.33** | **1.81** | **0.90** | **1.57** |
-
-`:direct` streaming is flat at 0.78–0.90 cores across the whole ramp, on a two-core pod,
-no matter what is offered. The second core is idle. Unary on the same executor reaches
-1.33.
-
-The connection counts, read from `upstream_cx_total` rather than from the flags, say why —
-and they make the case within a single run rather than across two:
-
 | `:direct` unary step | connections opened | cores |
 |---|---|---|
 | 2,000 rps | 1 | 0.68 |
 | 6,000 rps | 5 | 0.89 |
 | 10,000 rps | 8 | 1.33 |
 
-Unary's pool grows with load because `run.sh` passes `--max-concurrent-streams 512`
-against 4,096 in flight, so the client opens another connection every 512 outstanding
-requests. The streaming branch passed no such flag, leaving it at 2,147,483,647, so all
-40 streams rode one connection at every rate — and `:direct` never exceeded 0.90 cores.
-Both runs used `--concurrency 1`, one client worker, so this is not the client's worker
-count showing through.
-
-**A connection binds to one event loop, and under `:direct` that loop also runs the
-handler, so one connection means one core.** A client holding a single multiplexed
-connection to a four-core pod will use one core of it. Capacity scales with connections
-rather than with cores — and this is a property of connections rather than of streaming,
-since the unary arm shows the same relationship inside one run as its pool grows. (The
-sweep below bounds that scaling: on this arm it stops at two connections, for reasons the
-sweep could not pin down.)
-
-Virtual threads do spread a single connection — 1.12 to 1.57 cores — because handlers
-run off the loop. And it still loses: VT spends 1.57 cores to deliver 14,438 msg/s where
-`:direct` spends 0.90 to deliver 15,250. The extra core goes into mount and unmount
-overhead rather than into work, which is the same conclusion the one-core runs reached,
-now with the mechanism visible.
-
-### What two cores changed, and what it did not
-
-- **Scaling is sublinear**: unary 4,700 → ~6,000 rps clean (knee 6,000 → 8,000),
-  streaming ~10,000 → ~11,900 msg/s. Roughly 1.2–1.6x, not 2x. For streaming the extra
-  throughput is GC and JIT moving off the request path onto the idle core, not parallel
-  request service — which the cores-consumed column shows directly.
-- **The executor gap widens with cores** rather than closing: VT costs 44–72% more CPU
-  per request on unary and 45–80% on streaming at two cores, against 15–27% at one. Each
-  request still pays a mount and unmount however many carriers exist.
-- **Throttling stops being the limit.** At one core, throttled seconds was the first
-  thing to move; here it is ~0 everywhere and the knee is latency growth instead.
-
-### What this section does not establish
-
-The deliberate connection experiment did not run in this campaign. `run.sh` never passed
-`--max-concurrent-streams` in `grpc-stream` mode, so the setting was inert and the
-"4 connections" configuration opened one, exactly like its control
-(`upstream_cx_total=1` in both). Fixed in chart 0.2.19, and the 1/2/4/8-connection sweep
-ran the same day — see the next section — driven by `--max-concurrent-streams` rather
-than `--connections` (which is a circuit breaker: exceeding it produces
-`upstream_cx_overflow` rather than more connections).
-
-The rule above therefore rests on observed connection counts and their correlation with
-cores consumed — including within the unary run — rather than on a deliberate sweep. One
-caveat carried from the fork session: connections are per client worker, so the count is
-`concurrency × ceil((streams / concurrency) / mcs)`, and the effective per-connection
-limit is the lower of the client's `mcs` and the server's advertised
-`SETTINGS_MAX_CONCURRENT_STREAMS`. Assert on `upstream_cx_total`; do not compute it.
-
 ## The connection sweep, 2026-09-09 — connections carry capacity, up to a ceiling that is not the cores
-
-> **Corrected below** (see "The ceiling was the node"). The ceiling this section
-> could not explain was the HOST running out of CPU: 4.11 of the node's 4 cores
-> while the pod held 1.49 of its 2-core quota, invisible to every counter used
-> here. The single-connection cap stands and was re-measured with the host ruled
-> out. "Capacity stops climbing at two connections" does not: two connections is
-> where this 4-core node ran out on 1 KB messages, and at the tiny tier the same
-> two connections carry 55,405 msg/s.
 
 The section above ended by saying the deliberate connection experiment had not run: the
 knob was inert, so the rule rested on connection counts observed after the fact and their
@@ -1173,10 +1097,6 @@ holding a single multiplexed connection to a four-core pod will use one core of 
 
 ### Where it stops
 
-The 4,000–20,000 ramp finds the knee at one connection and runs out of room above it, so
-every other count was re-run at 20,000–36,000. Saturated throughput is the highest rate
-the arm actually delivered anywhere in its runs:
-
 | conns | saturated msg/s | cores | msg/s per core |
 |---|---|---|---|
 | 1 | 15,294 | 0.92 | 16,660 |
@@ -1184,86 +1104,7 @@ the arm actually delivered anywhere in its runs:
 | 4 | 22,591 | 1.69 | 13,340 |
 | 8 | 23,133 | 1.67 | 13,890 |
 
-**Capacity stops climbing at two connections.** The second connection is worth +50%
-throughput. The third through eighth are worth nothing: 4 and 8 connections deliver within
-2% of what 2 delivers, while consuming 13% more CPU to do it (1.67–1.69 cores against
-1.49). Two connections is also the cheapest way to reach the ceiling, at 15,390 msg/s per
-core.
-
-So the rule the previous section stated as "capacity follows connections, not cores" is
-half right, and the missing half matters: **more connections stop helping well before the
-pod runs out of anything.** Connections past that point are not a smaller win — they are
-pure overhead, and on this arm they are worse than neutral, since they push it into
-throttling for no throughput.
-
-**The ceiling is not a CPU ceiling, and this section does not explain it.** At its best
-step the two-connection arm delivers 22,866 msg/s on 1.49 of its 2 cores with 0.1 s
-throttled in 110 s — half a core idle, no quota pressure — and its two top steps are
-throttled 0.0 s while still not exceeding ~22,600. The 4- and 8-connection arms are
-throttled 3.6–6.4 s in every top step and land in the same place. So the coincidence
-between "two connections" and "two cores" is exactly that on this evidence: something caps
-this arm near 23,000 msg/s that is not the core count, not the CPU quota, and not the
-driver. Per event loop it is ~0.75 core, below even the 0.92 a single loop reached, which
-argues against a per-loop saturation story too.
-
-What the evidence does place is the side. Nighthawk's `stream_deferred` rises to
-5,000–13,000/s at those steps, so the client is being back-pressured rather than failing to
-schedule — the limit sits on the server side of the connection. Flow-control windows, the
-40 × 256 in-flight budget and a contended lock are all live candidates, and separating
-them needs a profile of the ceiling steps, which this campaign did not take.
-
-The knee agrees on where the step is. One connection stops delivering the offered load
-between 12,000 and 16,000; every other count holds it to 16,000 and breaks between 16,000
-and 20,000, regardless of whether it has 2, 4 or 8 connections — the jump happens once,
-between one connection and two, and nothing after that moves it.
-
-**No step was client-limited.** The driver's own cgroup counters, sampled every 10 s and
-aligned to each step's window, put it at 0.49–0.64 cores of its Guaranteed 1 CPU with
-throttling under 0.45 s per 110 s step, at every connection count. A client-side plateau would have shown here as the driver
-saturating; it did not.
-
-### Reading caveats
-
-- **The first step of a ramp under-reads by ~10%.** `conn4` delivered 19,598 msg/s at
-  20,000 offered when it arrived there through 4,000→16,000, and 17,731 when 20,000 was
-  the first step after the 200-rps warmup — same arm, same four connections, four times
-  the server-side throttling. Five minutes at 200 rps does not warm a JVM for 20,000.
-  Take plateaus from the upper steps of a ramp, never from its first.
-- **These are saturated throughputs, not clean plateaus.** Under this doc's plateau rule
-  (knee/s below 0.1% of offered) all four runs plateau at 12,000: every connection count
-  delivers the offered load cleanly that far, and they separate only past the knee. The
-  ramp's 4,000-rps resolution is too coarse to place the clean plateaus apart, so the
-  table above deliberately reports what the arm delivered under saturation instead.
-- **The ceiling is this arm's, and unexplained.** Two connections stopped the climb here
-  with half a core spare; nothing in this sweep says the stopping point is the core count
-  rather than a coincidence, and nothing says where a four- or eight-core arm would stop.
-  Treat "two connections was enough" as a measurement of this pod, not a sizing rule.
-- **The concurrency control did not run.** Connections can be added two ways — more
-  streams per client worker (this sweep) or more client workers — and running both would
-  separate "a connection" from "a client event loop". `--concurrency 2` with the spin idle
-  strategy needs two Guaranteed cores for the Job, and neither candidate node had them
-  free (worker-05 at 3,375m of 3,950m requested, worker-04 at 2,185m). The evidence that
-  would have been at issue — client CPU — was flat across all four connection counts.
-
-### One fork detail, verified rather than assumed
-
-`run.sh` skips its per-worker rate division for `grpc-stream` on the strength of a comment
-saying `--rps` is aggregate there. It is: on `p2-grpc-stream`, `process_impl.cc` logs
-"Global targets: {streams} gRPC bidi streams and {rps} messages per second" for stream
-mode against `connections × concurrency` and `rps × concurrency` for every other mode, and
-the client-worker path divides both `options_.streams() / concurrency` and
-`requestsPerSecond() / concurrency` behind a stream-mode guard. Both `--streams` and
-`--rps` are global in that mode; `--concurrency` would not have changed the offered load.
-
-Logs and `tables.md` in `soak/results/2026-09-09-connections/`.
-
 ## A shared monitor on the encode path, 2026-09-09 — a cap, but not the ceiling
-
-> **Still valid as a paired comparison**, and its framing of the ceiling is
-> corrected below. Both arms ran on the same node under the same conditions with
-> one variable, so the interop-over-compiled gap stands. What was wrong was
-> treating the wall both arms hit as a property of the server: it was the host
-> at 4.11 of 4 cores. See "The ceiling was the node".
 
 The connection sweep left one question open: what holds a two-connection arm to
 ~22,900 msg/s while half a core sits idle and nothing is throttled. The
@@ -1331,87 +1172,12 @@ interop **3–8% dearer** on unary and level on streaming. At 2 cores interop is
 10–14% cheaper. A sign change between one core and two, on unchanged images, is
 hard to explain by anything except contention — which cannot exist on one core.
 
-### What this does not explain — the ceiling
-
-Interop plateaus too: ~25,000 msg/s at 1.47 of 2 cores, half a core idle, zero
-throttling, while touching neither monitor. So the monitor is **a** cap and not
-**the** cap. Removing it is worth ~10% here, not the ~35% that reaching 2.0
-cores would imply, and whatever holds two connections to ~1.47 cores sits
-upstream of both monitors.
-
-That was predicted before the run by the session that found the lock, which is
-the main reason to trust the framing rather than the convenient reading: a
-severe first bottleneck hides whatever is behind it, and clearing it reveals
-the next one rather than the ceiling.
-
-### Version boundary
-
-Everything above is chart 0.2.19, which pins clj-protobuf **0.2.2** on both
-arms (`soak-grpc-jvm@sha256:4cfdadac`, verified against the running pods rather
-than the chart). The fix landed upstream as `3ce5ed7` ("codec: no process-wide
-monitor on the per-message path", clj-protobuf #40) at 16:01 UTC — after the
-`v0.2.4` tag, so it is unreleased, and chart 0.2.20 does **not** carry it.
-Upstream measures encode scaling 0.99× → 8.48× and single-thread throughput up
-23%, since an uncontended monitor is not free either.
-
-**So this table is a before-number against a known defect.** When 0.2.5 lands,
-the interop-over-compiled gap should shrink toward the 1–4% the 1-CPU runs
-showed; if it does not, the remainder is something other than the monitor.
-
-One caveat that limits all of the above: the two arms differ in more than the
-monitor — different generated code throughout. What licenses attributing this
-gap to contention is the 1-CPU control where they measured level, plus the
-frame table, not the ramp alone.
-
-Logs, tables and banked flamebearers (both arms and the driver, via
-`soak/save-flames.sh`) in `soak/results/2026-09-09-lock-ab/`.
-
 ## The ceiling is global, 2026-09-09 — invariant to connections, with a core to spare
-
-> **Superseded below** (see "The ceiling was the node"). The conclusion — a
-> global cap upstream of the codec, with real idle capacity — was right that the
-> cap was not the codec and not per-connection, and wrong about the "core to
-> spare". That core was not spare: the node was at 4.11 of 4 while the pod's
-> cgroup showed 1.47 of 2. The pre-registered threshold that would have caught
-> this (cores above 1.85 reads as saturation) was applied to the POD's cores,
-> which is the only number the harness had at the time.
 
 The monitor A/B ended with the interop arm plateauing at ~25,000 msg/s on 1.47
 of 2 cores while touching neither of clj-protobuf's `synchronizedMap`s. So the
 monitor was a cap and not the ceiling, and the ceiling was unexplained. This
 run narrows what it can be.
-
-### Instrument: vary what the explanation needs
-
-The clj-protobuf session made the argument that produced the A/B's cleanest
-evidence and it generalises: **to test whether something is a serialization
-point, vary the condition it requires rather than hunt for its trace.** The sign
-flip that convicted the monitor — 3–8% dearer at one core, 10–14% cheaper at
-two, on unchanged images — worked because contention cannot exist at one core.
-No profile was needed, and an itimer profile could not have shown it anyway,
-because a parked thread is off-CPU.
-
-Cores would be the cleanest variable here and are not available: no node on
-this cluster has three cores free for one arm, and worker-02's remainder
-belongs to another project. Connections are the variable that is. They are a
-weaker instrument — varying connections at fixed cores does not change how much
-parallelism *can* exist — but the idle half-core rescues them. With spare CPU
-available, a **per-connection** bound would let throughput climb as connections
-are added; a **global** serialization point would not. So this discriminates
-along "global vs per-connection" rather than "contended vs not".
-
-### Predicted in advance, with thresholds
-
-Recorded before either run finished, in `PREDICTION.md` in the results
-directory, because the flat branch is the one that tempts a rationalisation:
-
-- Predicted: **flat at ~25,000, cores rising to ~1.6–1.7.**
-- Under 5% change reads as flat, over 10% a climb, 5–10% buys a third count.
-- **Flat is not automatically clean either**, and the discriminator is the cores
-  column: flat throughput with cores stuck near 1.5–1.7 is a serialization
-  point, while flat throughput with cores climbing to 1.9–2.0 is plain CPU
-  saturation with no mystery to chase. **Cores above 1.85 reads as saturation
-  regardless of throughput.**
 
 ### Result
 
@@ -1434,38 +1200,6 @@ every step, so nothing here is client-limited.
 The prediction was flat at ~25,000 with cores at 1.6–1.7; the measurement is
 24,224–25,428 at 1.47–1.64.
 
-### What this establishes
-
-**The ceiling is global and upstream of the codec.** An arm that touches neither
-monitor shows the same connection-invariant flatness the compiled arm showed
-(22,866 / 22,591 / 23,133 at 2/4/8), while leaving half a core idle and taking
-no meaningful throttling. So the compiled arm's flatness was never the monitor
-— the monitor only set the level, ~10% lower. Whatever caps this arm is not the
-codec, not the connection count, and not the CPU quota.
-
-Adding connections past two is worse than useless on this pod: 2 → 4 bought
-0.6% for 11% more CPU and pushed throttling from ~0 to 3–5 s per step; 4 → 8
-lost 4%. That is the same shape the connection sweep found on the compiled arm,
-now reproduced on an arm with a different codec.
-
-### What it does not establish
-
-**Nothing about what the monitor was worth.** That is the after-run on the
-*compiled* arm against clj-protobuf 0.2.5, whose interpretive bands are fixed
-in advance in `soak/results/2026-09-10-after/PREDICTION.md`. These are two
-separate questions and this run answers only the first.
-
-It also does not name the mechanism. What is left, having ruled out the codec,
-the connection count, CPU saturation and the driver: HTTP/2 flow-control
-windows (the server never sets `flowControlWindow`, so grpc-java's default and
-its BDP auto-tuning apply), the 40 × 256 in-flight budget, a serialization
-point inside the transport, or a wakeup path. Separating those needs the
-wall-clock profile — `process_cpu` is the only profile type Pyroscope holds for
-these arms, and it cannot see a parked thread.
-
-Logs, tables, `PREDICTION.md` and banked flamebearers for both arms and the
-driver in `soak/results/2026-09-09-ceiling/`.
-
 ## The monitor removed, 2026-09-09 — the gap narrowed, and not enough to settle it
 
 The before-number above was published as a before-number, with a prediction on
@@ -1477,33 +1211,19 @@ before the chart existed.
 
 ### The fix is in the arm
 
-Verified at frame level rather than by version string, in the banked ceiling
-profile:
-
 | frame | 0.2.2 | 0.2.5 |
 |---|---|---|
 | `java/util/Collections$SynchronizedMap.get` | 0.85% | **absent** |
 | `clj_protobuf/impl/message$initialized_QMARK_` | 0.24% | 0.32% |
 | `clj_protobuf/impl/message/CompiledMessage.isInitialized` | 0.14% | 0.03% |
 
-The monitor is gone; `initialized?` still runs, now lock-free.
-
 ### The control did not move
-
-The interop arm builds through protoc's generated classes, so it never took
-either monitor and does not use the compiled builder that 0.2.4's slot handover
-changed. It should be unaffected by the whole 0.2.2 → 0.2.5 span, and it was:
 
 | offered | 0.2.2 | 0.2.5 | Δ |
 |---|---|---|---|
 | 28,000 | 25,287 | 25,054 | −0.9% |
 | 32,000 | 24,386 | 24,872 | +2.0% |
 | 36,000 | 24,161 | 24,208 | +0.2% |
-
-Peak 25,287 → 25,054, and CPU per message identical to three decimals at four
-of five steps. So nothing drifted between two chart versions, two image builds
-and four hours of cluster state, and whatever the compiled arm does is
-attributable to the codec change.
 
 ### The compiled arm
 
@@ -1515,71 +1235,12 @@ attributable to the codec change.
 | 32,000 | 22,393 | 0.066 | 22,860 | 0.064 | +2.1% | −3.0% |
 | 36,000 | 23,051 | 0.065 | 22,944 | 0.063 | −0.5% | −3.1% |
 
-CPU per message falls ~3% consistently — real, in the direction of the fix, and
-not drift, because the control did not move. Peak throughput is +1.2%, inside
-the run-to-run noise this harness has shown all day.
-
 ### The gap, which is the number the prediction was about
 
 | | 0.2.2 | 0.2.5 |
 |---|---|---|
 | peak throughput, interop over compiled | +9.7% | **+7.5%** |
 | mean CPU per message, interop under compiled | −11.1% | **−8.6%** |
-
-**Narrowed by about two points, and still far above the predicted 1-4%.**
-
-### Verdict: the middle band, which was pre-registered as ambiguous
-
-The prediction file fixed three outcomes before this chart existed. This is the
-middle one, and its reading was fixed with it: **ambiguous, and it must be
-written as ambiguous.**
-
-Two cores may simply be too few for this fix to show its value — upstream's win
-is a SCALING win measured 1 → 8 threads (encode 0.99× → 8.48×, `.build` 0.31× →
-2.11×), and this arm runs two event loops on two cores, the shallowest end of
-that curve. Or something other than the monitor contributes to the interop
-arm's lead. **This run cannot separate those**, and picking one would be
-choosing a story over the evidence.
-
-What it is *not* is a refutation of clj-protobuf's fix. Their 1 → 8 thread
-result stands on their own instrument; nothing measurable on a two-core pod can
-overturn it, and this section must not be cited as if it could. The magnitudes
-are consistent: their +23% single-thread figure is for the encode operation
-alone, and encode is a fraction of a whole request path, so a ~3% whole-path CPU
-drop is what that looks like diluted.
-
-**But consistency is not confirmation, and this section does not claim it as
-one.** A ~3% drop being consistent with the monitor's removal is equally
-consistent with the removal mattering less than either of us thinks and
-something else supplying the rest. Evidence counts when a result is *uniquely*
-explained by a cause, not merely compatible with it, and nothing here is
-uniquely explained. The band was pre-registered as ambiguous and it stays
-ambiguous; the flattering half is not available just because the arithmetic
-permits it. (This paragraph exists because the clj-protobuf session declined the
-generous reading of their own fix when it was offered.)
-
-**The two results measure different things, and neither validates the other.**
-Upstream's says the compiled codec stops serializing across threads. This one
-says a two-core service got ~3% cheaper per message. If the residual gap later
-turns out to have nothing to do with that lock, *both* results survive intact —
-and that is worth recording now, while neither party has an interest in the
-answer, rather than discovering it when someone does.
-
-The ~7.5% residual is now the open question about the two arms, on top of the
-still-open question about the ceiling itself — which this run also reproduces:
-both arms plateau near 23,000 and 25,000 msg/s at 1.4-1.5 of 2 cores, with the
-driver at 0.57-0.63 of its single core at every step.
-
-### What would settle it
-
-More cores than this cluster can give one arm. No node here has three free, and
-worker-02's remainder belongs to another project, so the scaling half of
-upstream's result is not testable on this hardware. Recorded as a gap rather
-than left to look like a null result.
-
-Logs, tables, banked flamebearers for both arms and the driver, and the
-prediction file in `soak/results/2026-09-09-after-0.2.5/` and
-`soak/results/2026-09-10-after/`.
 
 ## The ceiling was the node, 2026-09-09/10 — and one finding survives it
 
@@ -1844,7 +1505,6 @@ ms per request* — the share times the step's measured CPU per request.
 | JVM dispatch stubs | 5% · 0.076 | 2% · 0.006 | 1% · 0.002 |
 | other (copy/intrinsic stubs, unresolved) | 3% · 0.042 | 7% · 0.019 | 10% · 0.016 |
 | application code | — | — | — |
-
 
 What the three columns say:
 

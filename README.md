@@ -229,11 +229,15 @@ core on 1 KB bodies: REST HTTP/1.1 ~750 rps → h2c ~750 → **gRPC unary ~4,700
 withdrawn by that campaign rather than merely refined: the 7.5×/16× streaming
 ratios were the old k6 driver under-measuring unary, and "the executor trade
 inverts with load" was a loopback artifact — on a 1-CPU pod `:direct` leads on
-CPU per request, capacity and p50 alike. Those are **per-core** figures, and a
-gRPC arm reaches them only if the client opens enough connections: a connection
-binds to one event loop, so one multiplexed connection to a multi-core pod uses
-one core of it, measured flat at 0.79–0.92 cores on a two-core arm however hard
-it was pushed. The harness lives in [`soak/`](soak/), raw per-step tables in
+CPU per request, capacity and p50 alike.
+
+Those are **per-core** figures, and a gRPC arm reaches them only if the client
+opens enough connections: a connection binds to one event loop, so one
+multiplexed connection to a multi-core pod uses one core of it — measured pinned
+at 0.90 cores while the node had a full core spare. Size clients by connection
+count as well as pod CPU.
+
+The harness lives in [`soak/`](soak/), raw per-step tables in
 [`docs/results/`](docs/results/).
 
 ## Building
