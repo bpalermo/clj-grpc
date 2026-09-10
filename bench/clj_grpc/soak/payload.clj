@@ -2,12 +2,15 @@
   "The switch ladder's request bodies, written once so every arm is fed the
   same information.
 
-  Two tiers. `tiny` is the August campaign's `{\"name\":\"world\"}` — kept
+  Three tiers. `tiny` is the August campaign's `{\"name\":\"world\"}` — kept
   byte-identical so the new numbers can be checked against the old ones.
   `realistic` carries a nested payload of strings, numbers and a repeated
   field, sized so its PROTOBUF encoding lands on a target byte count; the
   JSON encoding of the same value is whatever it is, and that difference is
   one of the things being measured, so it is reported rather than equalized.
+  `dense` is the same wire size as `realistic` carried by many small fields
+  instead of one filler string: measurements so far have varied bytes and
+  field count together, and this is the tier that separates them.
 
   Each tier is written three ways: `<tier>.json` for the REST arms,
   `<tier>.pb` — the raw serialized HelloRequest, no gRPC frame, because the
@@ -70,11 +73,49 @@
           (> n (* 2 target-bytes)) m
           :else (recur (inc n)))))))
 
+(defn- dense-with-items
+  "The realistic shape with an empty `body` and `n` line items, so the bytes
+  live in FIELDS rather than in one large string."
+  [^long n]
+  (assoc-in (realistic-with-body 0) [:payload :items]
+            (vec (for [i (range n)]
+                   {:sku (format "SKU-%05d" (* 137 (inc i)))
+                    :qty (inc (mod (* 7 i) 5))
+                    :price (+ 9.99 (* 3.5 i))}))))
+
+(defn dense
+  "The dense tier: the same wire size as `realistic` reached by many small
+  fields instead of one filler string. The pair is the point — holding bytes
+  roughly constant while varying field count is the only way to separate the
+  two axes, and every existing measurement of payload cost varies both at
+  once. Walked rather than computed, for the same varint reason as above."
+  [^long target-bytes]
+  (loop [n 1]
+    (let [m (dense-with-items n)]
+      (cond
+        (>= (pb-size m) target-bytes) m
+        (> n 1000) m
+        :else (recur (inc n))))))
+
+(defn leaf-count
+  "Scalar values in the value tree — the unit payload cost actually tracks.
+  Reported next to the byte count so the two are never confused again."
+  ^long [m]
+  (let [n (atom 0)]
+    (letfn [(walk [v]
+              (cond
+                (map? v) (run! (fn [[_ x]] (walk x)) v)
+                (sequential? v) (run! walk v)
+                :else (swap! n inc)))]
+      (walk m))
+    @n))
+
 (defn tiers
   "Tier name to HelloRequest map."
   [^long target-bytes]
   {:tiny {:name "world"}
-   :realistic (realistic target-bytes)})
+   :realistic (realistic target-bytes)
+   :dense (dense target-bytes)})
 
 (defn- json-bytes
   "The REST body: the same map, as JSON. Keys are the proto field names in
@@ -99,8 +140,8 @@
                   (do
                     (with-open [o (io/output-stream (io/file dir (str (name tier) ".json")))] (.write o json))
                     (with-open [o (io/output-stream (io/file dir (str (name tier) ".pb")))] (.write o pb))
-                    (format "%-10s json=%-6d pb=%-6d json/pb=%.2f"
-                            (name tier) (alength json) (alength pb)
+                    (format "%-10s json=%-6d pb=%-6d leaves=%-5d json/pb=%.2f"
+                            (name tier) (alength json) (alength pb) (leaf-count m)
                             (double (/ (alength json) (alength pb))))))
           text (str "# request body sizes in bytes, by tier (target pb bytes: " target-bytes ")\n"
                     (str/join "\n" lines) "\n")]
