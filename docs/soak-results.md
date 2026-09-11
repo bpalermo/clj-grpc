@@ -14,15 +14,19 @@ and 8 GB per node, flannel VXLAN, one arm per worker. Harness and procedure in
 
 1 KB protobuf / 1.3 KB JSON bodies, `:direct` executor, each rung differing from
 the one below in exactly one thing, measured on one instrument (Envoy
-Nighthawk). Chart 0.2.21, 2026-09-10, with node CPU sampled at every step to
-confirm the host was never the limit.
+Nighthawk). **Median of three replicates per rung**, chart 0.2.21/0.2.22
+(identical arm images), 2026-09-10/11, each on a ramp that runs past the knee,
+node CPU sampled at every step to confirm the host was never the limit.
 
-| rung | switch | capacity per 1-CPU pod | vs REST | migration cost |
-|---|---|---|---|---|
-| 0 | REST HTTP/1.1 | ~790 rps | — | — |
-| 1 | → h2c | ~800 rps | 1× | a server config flag; clients must speak h2c |
-| 2 | → gRPC unary | ~6,700 rps | **8.5×** | new clients, protobuf schema, serialization; API shape unchanged |
-| 3 | → gRPC stream | ~14,400 msg/s | **18×** | API contract: persistent connections, ordering, backpressure |
+| rung | switch | capacity per 1-CPU pod | replicates | vs REST | migration cost |
+|---|---|---|---|---|---|
+| 0 | REST HTTP/1.1 | **795 rps** | 795 / 781 / 806 | — | — |
+| 1 | → h2c | **800 rps** | 800 / 800 / 800 | 1× | a server config flag; clients must speak h2c |
+| 2 | → gRPC unary | **6,540 rps** | 6,541 / 6,618 / 6,358 | **8.2×** | new clients, protobuf schema, serialization; API shape unchanged |
+| 3 | → gRPC stream | **14,000 msg/s** | 14,009 / 13,966 / 14,266 | **17.6×** | API contract: persistent connections, ordering, backpressure |
+
+Replicate spread is 0.1–4.0%. The single-run figures these replace (6,700 and
+14,400) were each the *best* of their runs, not the middle.
 
 These replace an earlier table reading 750 / 750 / 4,700 (6×) / 10,000 (13×),
 which was wrong in two independent ways:
@@ -53,11 +57,40 @@ one core's worth, exactly the cap measured directly at two cores. Unary opens
 eight connections under load and reaches 0.94–0.98 cores of its quota. Neither
 was host-limited: the node sat at 2.3–3.1 of 4 throughout.
 
-**Read every figure as "at least".** Two runs of the identical chart an hour
-apart put the same arm at 5,999 and 5,240 rps at 6,000 offered — one climbed to
-6,000 through a ramp, the other started there. Run-to-run and ramp-shape spread
-on this harness is ~15%, wider than many of the differences this repo has drawn
-conclusions from.
+**Two kinds of spread, and they are very different sizes.** Run-to-run spread on
+a *shared* ramp is **0.1–4%** (the replicate columns above). Ramp-*shape* spread
+is much larger: two runs of the identical chart put the same arm at 5,999 and
+5,240 rps at 6,000 offered, the difference being that one climbed there and the
+other started there — ~13%. So a comparison across runs is trustworthy to a few
+percent only if the ramps match; across ramp shapes, differences under ~15% mean
+nothing. An earlier version of this file conflated the two and called the noise
+floor ~15%; that overstated it for matched ramps and understated the ramp-shape
+effect.
+
+## The native-image arm — deployed, and now measured
+
+GraalVM native-image of the same gRPC server, on the same 1-CPU pod, same
+bodies, same driver. Not on the ladder because the chart cannot pin it — GraalVM
+is not reproducible, so a chart version cannot stand still around a digest that
+moves — which means a native number only compares within one named image. This
+one is `soak-grpc-native@sha256:76b6edb7…`, built by CI from main at `4cce8ac`
+on 2026-09-11.
+
+| mode | native | JVM (`:direct`, median) | native / JVM |
+|---|---|---|---|
+| unary, realistic | ~2,240 rps at 0.45–0.49 ms/req | 6,540 at ~0.15 | **0.34×** capacity, ~3× CPU per request |
+| stream, realistic | ~4,100 msg/s at 0.24 ms/msg | 14,000 at ~0.06 | **0.29×** capacity, ~4× CPU per message |
+| RSS at the knee | 40–106 MB | ~300 MB | **0.3×** memory |
+
+Both native runs are pinned at 0.96–1.00 cores with the node at 2.2–3.1 of 4, so
+this is the arm's own limit and not the host's. Under overload it degrades the
+way h2c does — p50 rises to 1.7 s (unary) and 2.5 s (stream) rather than
+shedding at the client — and `/metrics` stops answering at the top step.
+
+**Native buys memory and startup, and pays for it in throughput.** Per request
+it is roughly 3–4× dearer than the JIT-compiled JVM at steady state, which is
+consistent with what a closed-world AOT compile of a dynamic language gives up.
+The August figure of ~1,550 unary on the k6 driver was the driver, not the arm.
 
 ## Connections, not just cores
 
@@ -158,7 +191,7 @@ says what you lose by turning one off, not what you gain by adding it.
 | `-Dclojure.compiler.direct-linking=true` on the arm's JVM | 3–16% CPU per request, 3–17% per streamed message | **yes**, chart default since 0.2.12 |
 | clj-protobuf's descriptor-compiled codec | 6–17% CPU; protobuf 26% of samples → 2% | **yes**, chart default |
 | `:direct` over the default virtual-thread executor | 15–27% CPU, ~25% stream capacity, p50 roughly half | **yes**, arm default |
-| protoc-gen-clojure `interop=true` | p50 −9 to −45%; CPU level at 1 CPU — see below | no, a separate arm |
+| protoc-gen-clojure `interop=true` | p50 −9 to −45%; CPU −3–4% at 1 CPU, −9–12% at 2 cores — see below | no, a separate arm |
 
 ### Where the ladder's numbers come from
 
@@ -178,31 +211,32 @@ Direct linking is the largest single contributor at ~4.9% of per-request CPU,
 protobuf-java 4.36.1 ~2.9%, everything else ~1.8%. **clj-protobuf 0.2.2 → 0.2.5
 is nil** — 0.0 / −0.9 / −1.0 / +0.6 / −2.1% across the ramp.
 
-**Typed interop wins latency; its CPU difference is inside the noise floor.**
-It wins p50 by 9–45% everywhere measured. On CPU, paired at 1 CPU on one node on
-the current chart:
+**Typed interop is cheaper on CPU everywhere measured on the current stack, and
+the advantage grows with cores.** It wins p50 by 9–45% everywhere. On CPU,
+paired on one node, both arms on the same executor:
 
-| measurement | executor | interop CPU | interop p50 |
-|---|---|---|---|
-| 1 CPU, chart 0.2.18 | virtual threads | +3–8% | −15 to −45% |
-| 1 CPU, chart 0.2.21 | virtual threads | **−3.3%** | −10.3% |
-| 1 CPU, chart 0.2.21 | `:direct` | **−4.1%** | −9.3% |
-| 2 cores, charts 0.2.19 / 0.2.21 | `:direct` | −10 to −14% | lower |
+| measurement | executor | interop CPU | interop p50 | pairs |
+|---|---|---|---|---|
+| 1 CPU, chart 0.2.18 | virtual threads | +3–8% | −15 to −45% | 2 |
+| 1 CPU, chart 0.2.21 | virtual threads | −3.3% | −10.3% | 1 |
+| 1 CPU, chart 0.2.21 | `:direct` | −4.1% | −9.3% | 1 |
+| 2 cores, chart 0.2.21 | `:direct` | **−8.6%** | lower | 1 |
+| 2 cores, chart 0.2.22 | `:direct` | **−12.1%** | lower | 1 |
 
-This document has now offered three explanations for the +3–8%: core count, then
-clj-protobuf's removed monitors, then the executor. **None survived.** The
-monitors measure nil at 1 CPU; the executor makes no difference to the
-comparison (−3.3% under VT against −4.1% under `:direct`); and core count does
-not separate the measurements either.
+At 1 CPU the effect is ~3–4%, at the edge of the ≤4% replicate noise floor —
+real in sign (negative at every step of every pair on the current stack) but not
+reliably in magnitude. At 2 cores it is 9–12%, well outside noise, stable across
+two pairs, every step negative. Both 2-core pairs were host-limited (node above
+4.0 of 4 at the top steps), so they compare the arms at a shared ceiling rather
+than measuring either arm's own.
 
-The likeliest explanation is the dullest, and it was in the original write-up all
-along: that measurement was taken as "two independent pairs, run 40 minutes
-apart, because the effect is the size of this harness's noise". It was
-noise-sized when published, this harness's spread is ~15%, and on remeasurement
-the sign reverses at similar magnitude. **Treat interop's CPU cost at 1 CPU as
-level.** The p50 advantage is the robust half — negative at every step of every
-pair — and the larger 2-core CPU advantage has not been retested since the host
-saturation was found.
+The "+3–8% dearer" this document carried for two days was measured on chart
+0.2.18 and does not reproduce on 0.2.21/0.2.22 under either executor. This
+document offered three explanations for it — core count, clj-protobuf's removed
+monitors, the executor — and none survived measurement. An interim version then
+called the whole CPU effect noise; with the replicate floor now known, that was
+also too strong. The 0.2.18 figure is most likely a stack difference that has
+since closed, and is not worth further chasing.
 
 clj-protobuf's two process-wide `Collections.synchronizedMap`s, removed in
 0.2.5, were once the leading explanation for the supposed flip. They are not:
