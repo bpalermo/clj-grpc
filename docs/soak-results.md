@@ -10,6 +10,77 @@ and 8 GB per node, flannel VXLAN, one arm per worker. Harness and procedure in
 [`../soak/README.md`](../soak/README.md); raw per-step tables under
 [`results/`](results/).
 
+## Conclusion
+
+Two questions, one answer each, on the shape a Knative or Kubernetes pod
+actually gets: one CPU, ~1 KB bodies, a client that keeps its connections.
+
+### REST or gRPC
+
+**gRPC unary gives a Clojure REST service about 8× the requests per core, and
+streaming about 17× the messages, with the API shape intact for unary.** The
+gain is not the encoding: JSON is 0.06 ms of REST's ~1.5 ms per request. It is
+the request pipeline — Pedestal's persistent maps and interceptors, Jetty's
+thread hand-offs, and 8× the syscall time of a multiplexed socket on an event
+loop. So a REST service cannot close the gap by swapping its codec; it closes it
+by changing the framework and the connection model, which is what a gRPC
+migration is. Below REST's knee gRPC's p99 is an order of magnitude lower, and
+under overload it plateaus and sheds at the client, where h2c and native both
+park work inside the server and let p50 run to seconds.
+
+**h2c is not a step on the way.** Same capacity, 3–16% more CPU per request,
+worse overload behaviour; a REST service should not migrate to it, and a gRPC
+migration gets HTTP/2 for free.
+
+**Streaming is a second, independent ~2×** for a service whose contract can
+change: persistent streams, ordering and backpressure become the API. It is
+grpc-java's per-RPC setup amortized away — the message itself costs the same.
+
+**Both figures are per core and per connection.** One connection binds to one
+event loop and, under `:direct`, runs the handler on it; a single-connection
+client gets one core of a four-core pod. Capacity planning is CPU quota *and*
+client connection count.
+
+### JVM or native
+
+**For a service that carries traffic, the JIT-compiled JVM. For a process
+whose life is measured in seconds or whose pods sit idle, native.** On the
+cluster, same pod, same bodies, same driver, the native image delivers 0.34× the
+JVM's unary requests and 0.29× its streamed messages, at 3–4× the CPU each —
+one JVM pod does the work of three native ones — in about half the memory
+(40–106 MB against 150–190 MB at the knee). Its one decisive win is cold start:
+79 ms to first RPC against the JVM's ~1,750 ms on the loopback bench, 22×.
+Under overload it behaves like h2c, not like the JVM: p50 climbs to 1.7–2.5 s
+and `/metrics` stops answering.
+
+**That reverses the loopback picture, and the reason is the payload.** The
+loopback comparison in the README — a wash at 1–2 cores, native cheaper per
+call — was an 8-byte echo over a Unix socket on x86, a shape where per-message
+framing is the whole cost. The cluster runs 1 KB bodies over TCP on arm64, where
+two thirds of the gRPC arm's CPU is payload handling, and that is the work the
+JIT is good at and the closed-world image is not. Payload, transport and
+platform changed together between the two, so the split between them is
+unmeasured; a native tiny-tier run on the cluster would separate payload from
+platform. Until it exists, **the sizing number for a production-shaped service is
+the cluster one**, and the loopback number describes ping-sized RPCs.
+
+**Native numbers are per image.** GraalVM's output is not reproducible, so the
+chart does not pin it and a native figure compares only within one named digest.
+The JVM ladder has a measured replicate floor of 0.1–4%; the native arm has one
+run per mode.
+
+### What would change this
+
+- A native tiny-tier run on the cluster: if native matches the JVM there, the
+  3–4× is the payload path and a future codec could narrow it; if it does not,
+  it is the platform.
+- PGO or G1 on native, which needs Oracle GraalVM, whose current builds fail
+  every RPC; the CE image here ran Serial GC with `-Xmx512m -Xmn256m`.
+- A multi-core, multi-connection ceiling, which this hardware cannot host: the
+  4-core nodes have ~2.2 cores of headroom beyond resident workloads.
+- Typed interop is already 9–12% cheaper at 2 cores and growing with cores; on
+  an unsaturated host it may be larger. It does not change the ordering above.
+
 ## The ladder — what a REST service gains from each switch
 
 1 KB protobuf / 1.3 KB JSON bodies, `:direct` executor, each rung differing from
@@ -80,7 +151,7 @@ on 2026-09-11.
 |---|---|---|---|
 | unary, realistic | ~2,240 rps at 0.45–0.49 ms/req | 6,540 at ~0.15 | **0.34×** capacity, ~3× CPU per request |
 | stream, realistic | ~4,100 msg/s at 0.24 ms/msg | 14,000 at ~0.06 | **0.29×** capacity, ~4× CPU per message |
-| RSS at the knee | 40–106 MB | ~300 MB | **0.3×** memory |
+| RSS at the knee | 40–106 MB | 150–190 MB | **~0.5×** memory |
 
 Both native runs are pinned at 0.96–1.00 cores with the node at 2.2–3.1 of 4, so
 this is the arm's own limit and not the host's. Under overload it degrades the
