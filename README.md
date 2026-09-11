@@ -98,9 +98,15 @@ Two measured levers, honest about their trade:
   event loop is the whole machine, that inversion disappears: the on-cluster
   ladder measures `:direct` ahead on every axis — 15–27% less CPU per unary
   request, ~25% more streaming capacity, p50 roughly half at every matched
-  rate ([docs/soak-results.md](docs/soak-results.md)). So the case for
-  `:direct` is tail latency and CPU on a small pod, not throughput in
-  general, and the case against it is unchanged and absolute: a handler that
+  rate ([docs/soak-results.md](docs/soak-results.md)). On a multi-core pod
+  the answer is the client's connection count: one connection under
+  `:direct` is one event loop and one core at any core count, while virtual
+  threads spread it across the cores it has (2.5× `:direct`'s
+  single-connection ceiling at 4 cores); given eight connections `:direct`
+  scales too and delivers ~1.7× the virtual-thread throughput at half the
+  CPU per message. So `:direct` is for 1-CPU pods and many-connection
+  clients; virtual threads for a few-connection client on a multi-core pod.
+  The case against `:direct` is unchanged and absolute: a handler that
   blocks on a direct executor stalls every connection on that loop. Default
   stays virtual threads — the only safe setting for handlers that may block,
   and the one grpc-java intends to keep optimising.

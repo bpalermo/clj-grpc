@@ -69,6 +69,22 @@ chart does not pin it and a native figure compares only within one named digest.
 The JVM ladder has a measured replicate floor of 0.1–4%; the native arm has one
 run per mode.
 
+### Virtual threads or `:direct`
+
+**`:direct` for a 1-CPU pod or a many-connection client; virtual threads for a
+few-connection client on a multi-core pod.** Measured off-cluster on a pinned
+x86 host, because the cluster cannot host it (below, "The executor, and
+cores"). One connection under `:direct` never uses more than one core, at any
+core count. Virtual threads spread that one connection across the cores it has
+— 2.5× `:direct`'s single-connection ceiling at 4 cores — and that is the shape
+a sidecar mesh or a single upstream channel produces. Given eight connections,
+`:direct` scales too and delivers ~1.7× the virtual-thread throughput on the
+same cores at half the CPU per message. Virtual threads cost 11–25% more per
+streamed message and 30–65% more per unary request on every shape; on
+streaming that cost is flat with cores, on unary it grows 1.5× from one core
+to four. The safety rule is unchanged: a handler that blocks on `:direct`
+stalls every connection on its loop.
+
 ### What would change this
 
 - A native tiny-tier run on the cluster: if native matches the JVM there, the
@@ -76,8 +92,9 @@ run per mode.
   it is the platform.
 - PGO or G1 on native, which needs Oracle GraalVM, whose current builds fail
   every RPC; the CE image here ran Serial GC with `-Xmx512m -Xmn256m`.
-- A multi-core, multi-connection ceiling, which this hardware cannot host: the
-  4-core nodes have ~2.2 cores of headroom beyond resident workloads.
+- The multi-core executor result is x86 and loopback. The cluster cannot
+  host it (4-core nodes with ~2.2 cores of headroom); an arm64 host with
+  four free cores would say whether the ratios carry.
 - Typed interop is already 9–12% cheaper at 2 cores and growing with cores; on
   an unsaturated host it may be larger. It does not change the ordering above.
 
@@ -180,6 +197,91 @@ hardware saturates before the software does (below). Drive connection count with
 it produces `upstream_cx_overflow` rather than more connections — and assert the
 result from `upstream_cx_total` rather than computing it from flags.
 
+## The executor, and cores
+
+The cluster's executor comparison is one core, and its 2-core pair was
+host-limited, so the question "which executor uses a multi-core pod" was
+measured off-cluster, 2026-09-11: an i9-7900X with the server and the driver
+pinned to disjoint physical cores (hyperthread siblings idle), same deploy jar
+on the same distroless base digest as the cluster image, same bodies, same
+Nighthawk fork, the chart's own `run.sh` and `soak/collect.sh` unchanged.
+Two executors × 1, 2 and 4 server cores × four client shapes; predictions were
+fixed before the first run and are in the results directory with the tables.
+
+**Virtual threads are the only executor that scales one connection across
+cores.** Streaming, 40 streams on one connection, msg/s at the knee:
+
+| server cores | `:direct` | virtual threads | VT / direct |
+|---|---|---|---|
+| 1 | ~123,000 at 0.008 ms | ~66,000 at 0.015 ms | 0.5× |
+| 2 | ~92,000 at 0.011 ms (1.0 core) | ~121,000 at 0.015 ms (1.8 cores) | 1.3× |
+| 4 | ~94,000 at 0.011 ms (1.0 core) | ~237,000 at 0.013 ms (3.1 cores) | **2.5×** |
+
+Under `:direct` the connection's event loop runs the handler, so one
+connection is one thread and the per-CPU samples show one core's worth
+migrating across the others. (The same thread does ~123,000 on a dedicated
+core and ~92,000 when free to migrate over two or four — the cost of moving.)
+Virtual threads hand the work off the loop, and one connection grows with the
+cores it has.
+
+**Given connections, `:direct` scales too, and it is cheaper per message at
+every core count.** Same streams over eight connections:
+
+| server cores | `:direct` | virtual threads | direct / VT |
+|---|---|---|---|
+| 1 | ~113,000 at 0.009 ms | ~55,000 at 0.018 ms | 2.1× |
+| 2 | ~179,000 at 0.010 ms (1.8 cores) | ~105,000 at 0.018 ms (1.9 cores) | 1.7× |
+| 4 | ~268,000 at 0.010 ms (2.7 cores) | ~163,000 at 0.020 ms (3.3 cores) | 1.6× |
+
+**Virtual threads' cost per streamed message does not grow with cores** —
+0.015 / 0.015 / 0.013 ms on one connection, 0.018 / 0.018 / 0.020 on eight. That
+retracts the cluster's 2-core reading of "~2× per message", which was the node
+(both arms were host-limited there, before the node sampler existed). At
+matched rates below the knee virtual threads cost 11–25% more per streamed
+message and 30–65% more per unary request, wider than the cluster's 15–27%.
+
+**Unary follows streaming, with one difference.** Eight connections, rps at
+the knee:
+
+| server cores | `:direct` | virtual threads | direct / VT |
+|---|---|---|---|
+| 1 | ~51,500 at 0.019 ms | ~40,600 at 0.025 ms | 1.3× |
+| 2 | ~94,000 at 0.020 ms (1.9 cores) | ~61,000 at 0.031 ms (1.9 cores) | 1.5× |
+| 4 | ~136,000 at 0.024 ms (3.3 cores)* | ~92,500 at 0.038 ms (3.5 cores) | 1.5× |
+
+*\* the driver was at 6.2 of its 8 logical CPUs there, so the 4-core `:direct`
+knee is shared with the client and is a floor.* On one connection at one core
+`:direct` does ~58,000 at 0.016 ms against ~39,000 at 0.026; at two cores both
+carried 50,000, `:direct` on 1.05 cores and virtual threads on 1.65.
+
+The difference: **on unary, virtual threads' cost per request does grow with
+cores** — 0.025 → 0.031 → 0.038 ms from one to four, 1.5×, where on streaming
+it stayed flat. Pre-registered as a fail at ≥ 1.5×, and it landed on the
+line. A unary RPC is one virtual thread mounted and unmounted per request; a
+streamed message amortises that over the stream.
+
+One client-side finding came with it: with 512 streams allowed per
+connection, the client pool piles work onto the first connection and opens the
+rest only when it is full, so `:direct` unary at 4 cores with connections "as
+needed" plateaued at ~59,000 on 2.2 cores. Connection count is the client's
+policy, not the server's property, and a `:direct` server's capacity is set by
+it.
+
+**Caveats that bound what this says.** It is x86 and loopback: per message at
+the knee this host is 6–8× cheaper than the CM5, so only within-host ratios
+carry to the cluster. Rows where the driver was at its limit are labelled in
+the tables and not read as knees (the single-worker unary rows at 2 and 4
+cores). Virtual threads stopped at ~3.1 of 4 cores on one connection, and a
+per-thread read of the server at that plateau says why: the connection's
+event loop is the busiest thread at 82%, the four carriers sit at 52% each,
+nothing is saturated — one connection's inbound path still runs through one
+loop, and that is the ceiling virtual threads reach, not the cores. `:direct`
+with eight connections at 4 cores plateaued with both sides under 75%, and
+quadrupling the client's in-flight budget moved it 5% (~268,000 → ~281,000;
+virtual threads ~163,000 → ~179,000), so that plateau is not the client's
+budget, not the cores and not the driver — unresolved, and it leaves the
+ratio between the executors where it was.
+
 ## Where the CPU goes
 
 **REST's extra ~1.3 ms per request is not JSON** (0.06 ms). It is the
@@ -261,7 +363,7 @@ says what you lose by turning one off, not what you gain by adding it.
 |---|---|---|
 | `-Dclojure.compiler.direct-linking=true` on the arm's JVM | 3–16% CPU per request, 3–17% per streamed message | **yes**, chart default since 0.2.12 |
 | clj-protobuf's descriptor-compiled codec | 6–17% CPU; protobuf 26% of samples → 2% | **yes**, chart default |
-| `:direct` over the default virtual-thread executor | 15–27% CPU, ~25% stream capacity, p50 roughly half | **yes**, arm default |
+| `:direct` over the default virtual-thread executor | 15–27% CPU, ~25% stream capacity, p50 roughly half at 1 CPU; on multi-core pods it depends on connections — see "The executor, and cores" | **yes**, arm default |
 | protoc-gen-clojure `interop=true` | p50 −9 to −45%; CPU −3–4% at 1 CPU, −9–12% at 2 cores — see below | no, a separate arm |
 
 ### Where the ladder's numbers come from

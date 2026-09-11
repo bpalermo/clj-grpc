@@ -1,0 +1,26 @@
+# VT executor, 4 cores (cpuset 2-5), one connection, 40 streams, held at
+# 240,000 msg/s offered. Per-thread CPU of the server JVM over a 20 s window
+# (utime+stime from /proc/<pid>/task/*/stat), 19:26:38 local. The ps -L
+# sampler in harness/verify-threads.sh printed only the process total and
+# was replaced by this /proc read; the run itself is verify-threads.log.gz.
+threads 22, total 3.06 cores
+  82.2% clj-grpc-epoll-   (the connection's event loop: reads every inbound frame)
+  52.2% ForkJoinPool-1-   (virtual-thread carrier)
+  52.1% ForkJoinPool-1-
+  52.0% ForkJoinPool-1-
+  52.0% ForkJoinPool-1-
+  15.2% VM Thread
+   0.2% Reference Handler
+   0.1% C2 CompilerThread
+   0.1% VM Per--- t=150s
+    TID %CPU COMMAND
+1772788  276 java
+--- t=160s
+    TID %CPU COMMAND
+1772788  278 java
+--- t=170s
+    TID %CPU COMMAND
+1772788  279 java
+--- t=180s
+    TID %CPU COMMAND
+1772788  281 java
