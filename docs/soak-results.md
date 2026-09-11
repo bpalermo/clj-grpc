@@ -104,8 +104,13 @@ same session, every step below the knee:
 | 2,000 | 0.300 | 0.358 | +19.3% |
 
 **Four times the fields costs about +20%, not 4×.** The implied per-field cost is
-**0.64–0.71 µs**, so `realistic`'s 30 fields account for roughly 19–21 µs of its
-~300 µs per message — **6–8%**. At `dense`'s 120 fields it is ~26%.
+**0.64–0.71 µs**, so `realistic`'s 30 fields are roughly 19–21 µs of work per
+message. **Which budget that is a share of matters, so name it:** against a
+*unary request below the knee* (~300 µs at 2,000 rps, 1 CPU) it is 6–8%; against
+a *streamed message at the knee* (~64 µs at 2 cores) the same ~21 µs is about a
+third. Both are true of different quantities. A reader who takes "the field term
+is a minority" as a statement about the codec rather than about a whole unary
+request will underweight it by roughly 5×.
 
 That corrects the advice this document previously gave ("count fields, treat one
 large value as nearly free per byte"), which was inferred from comparing 1,025
@@ -114,6 +119,17 @@ and cannot separate them. Taking the earlier tiny-vs-realistic delta of ~44 µs
 and subtracting the ~20 µs the field term now accounts for leaves ~24 µs across
 ~1,018 bytes, so the per-byte term is real at roughly 20–25 ns/byte rather than
 negligible.
+
+**And most of that per-byte term is not the codec.** clj-protobuf measured its
+own marginal cost of bulk directly — two shapes differing only in the length of
+one string, encode+decode through the full Clojure pipeline, no transport —
+at **1.15 ns/byte** on x86. Allowing 3–4× for CM5, the codec accounts for perhaps
+4–5 ns/byte of the 20–25 measured here. The remaining three quarters is framing,
+buffer copies and socket writes: whatever scales with bytes on the path *around*
+the codec. A filler string costs the codec about 1 ns/byte and costs the system
+about 24. (Their intercept is not usable as a fixed per-message cost — the p2
+fixture scans ~40 declared fields however few are set — but the marginal is
+robust because that scan cancels between the two rows.)
 
 **The useful form: at ~1 KB, expect a large fixed per-message cost, a real
 per-byte term, and a field term that is a minority unless the message is unusually
@@ -292,5 +308,9 @@ campaign's payload had production size without production field density, and
 clj-protobuf's corpus has neither.** Half of it is now closed — the `dense`
 tier is 1,030 bytes across 120 leaf values, and running it against `realistic`
 at matched rates is what produced the field-vs-byte split above. The other half
-is still open: clj-protobuf's own benchmark still tops out at 443 bytes, so
-figures cited from that suite still describe the small end of the curve.
+— a ~1 KB shape in clj-protobuf's own benchmark — is their call, and the dense
+result changes what it would be for: their harness has no transport, so it can
+measure the codec's ~1 ns/byte and the field-density term accurately and is
+structurally incapable of measuring the ~24 ns/byte that dominates here. The
+honest case for that shape is field-density realism, not the per-byte term,
+which belongs to this harness.
