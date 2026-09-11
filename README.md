@@ -192,6 +192,14 @@ does it in roughly half the memory — so for pods-per-node density, native
 wins on every axis that matters, not just cold start. The JVM's case is the
 dedicated always-on service with cores to spare and latency to shave.
 
+That is the loopback picture, and it is an 8-byte echo over a Unix socket on
+x86. On the cluster at 1 KB bodies over TCP the same pod shape reverses it:
+the native arm delivers 0.3× the JVM's requests at 3–4× the CPU each, in about
+half the memory — see the conclusion in
+[`docs/soak-results.md`](docs/soak-results.md). For a service that carries
+traffic at production body sizes, the JVM; for scale-from-zero and idle
+density, native.
+
 ## Against REST
 
 `bazel run //bench:run` measures full round trips on loopback with persistent
