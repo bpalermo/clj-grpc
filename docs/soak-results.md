@@ -90,22 +90,39 @@ owned by the codec and the value representation, not the transport and not the
 network: between those two tiers, bytes on the wire fall 27× while node softirq
 falls 7% carrying 2.4× the messages.
 
-**That cost scales with structure, not size.** clj-protobuf's corpus shows cost
-tracking field count rather than bytes: two shapes at the *same* 443 bytes carry
-51 and 101 leaf values and cost in proportion to the leaves, not the bytes. Field
-**kind** matters second — shapes that construct nested messages (repeated message
-fields, and map fields, whose entries *are* two-field messages) run about 165 ns
-per leaf against 109–120 for flat scalar shapes, so roughly 1.4–1.5×, not a
-multiple.
+**Both field count and bytes matter, and at production shape bytes and fixed
+overhead dominate.** Measured directly with a pair built for it: `realistic` is
+1,025 bytes across 30 leaf values, `dense` is 1,030 bytes across 120 — the same
+wire size within half a percent, four times the fields. Same arm, same ramp,
+same session, every step below the knee:
 
-The working model is `(field count × per-field cost, weighted by kind) + (bytes ×
-a small per-byte term)`, and at production shape the first dominates: per-field
-cost is 100–165 ns while a large single value is order 1 ns/byte.
+| offered | realistic | dense | Δ |
+|---|---|---|---|
+| 500 | 0.513 ms | 0.582 ms | +13.5% |
+| 1,000 | 0.388 | 0.471 | +21.4% |
+| 1,500 | 0.342 | 0.416 | +21.6% |
+| 2,000 | 0.300 | 0.358 | +19.3% |
 
-So: **count fields, weight nested messages and map entries somewhat above
-scalars, and treat one large value as nearly free per byte.** Note also that the
-44 µs delta above is not purely a field-count result — the realistic tier's bulk
-is one 800-byte filler string, so it carries a real per-byte term too.
+**Four times the fields costs about +20%, not 4×.** The implied per-field cost is
+**0.64–0.71 µs**, so `realistic`'s 30 fields account for roughly 19–21 µs of its
+~300 µs per message — **6–8%**. At `dense`'s 120 fields it is ~26%.
+
+That corrects the advice this document previously gave ("count fields, treat one
+large value as nearly free per byte"), which was inferred from comparing 1,025
+bytes / 30 leaves against 7 bytes / 1 leaf — a pair that moves both axes at once
+and cannot separate them. Taking the earlier tiny-vs-realistic delta of ~44 µs
+and subtracting the ~20 µs the field term now accounts for leaves ~24 µs across
+~1,018 bytes, so the per-byte term is real at roughly 20–25 ns/byte rather than
+negligible.
+
+**The useful form: at ~1 KB, expect a large fixed per-message cost, a real
+per-byte term, and a field term that is a minority unless the message is unusually
+dense.** A message that is mostly one large value is not cheap, and a message with
+four times the fields is not four times dearer.
+
+*(The 2,500-offered step is excluded above: `dense` had begun shedding there —
+45.9/s, 7.5 s throttled — which inflates its CPU. Node stayed at 2.2–3.1 of 4
+throughout, so none of this is host-limited.)*
 
 **Streaming's gain over unary is grpc-java shrinking**, 8.4% of samples (0.023
 ms) to 3.8% (0.006 ms): per-RPC setup, headers and trailers amortized over a
@@ -270,8 +287,10 @@ Figures cited from that suite therefore describe the small end of the curve —
 including the deep-shape encode pair (412 vs 650 ns) quoted in the raw results,
 which is 27 bytes and 5 leaf scalars.
 
-The gap is symmetric, which is why it went unnoticed on both sides: **this
-campaign's payload has production size without production field density, and
-clj-protobuf's corpus has neither.** Closing it needs a ~1 KB nested shape, and
-ideally a pair holding bytes constant while varying field count so the two axes
-separate.
+The gap was symmetric, which is why it went unnoticed on both sides: **this
+campaign's payload had production size without production field density, and
+clj-protobuf's corpus has neither.** Half of it is now closed — the `dense`
+tier is 1,030 bytes across 120 leaf values, and running it against `realistic`
+at matched rates is what produced the field-vs-byte split above. The other half
+is still open: clj-protobuf's own benchmark still tops out at 443 bytes, so
+figures cited from that suite still describe the small end of the curve.
