@@ -83,7 +83,12 @@ a sidecar mesh or a single upstream channel produces. Given eight connections,
 `:direct` scales too and delivers ~1.7× the virtual-thread throughput on the
 same cores at half the CPU per message — and every connection added to a
 virtual-thread server costs it throughput (one 237k, two 203k, eight 163k at
-4 cores), so the two executors want opposite client shapes. Virtual threads cost 11–25% more per
+4 cores), so the two executors want opposite client shapes. Two defaults cap
+both executors on this host: the JVM's Serial young generation (~5 MB under a
+1 GB limit) and grpc-java's one-credit-per-message flow control; sizing the
+first and batching the second lifts virtual threads to ~445,000 msg/s on one
+connection and `:direct` to ~487,000 on eight, and closes most of the gap
+between them. Virtual threads cost 11–25% more per
 streamed message and 30–65% more per unary request on every shape; on
 streaming that cost is flat with cores, on unary it grows 1.5× from one core
 to four. The safety rule is unchanged: a handler that blocks on `:direct`
@@ -98,6 +103,9 @@ stalls every connection on its loop.
 - The multi-core executor result is x86 and loopback. The cluster cannot
   host it (4-core nodes with ~2.2 cores of headroom); an arm64 host with
   four free cores would say whether the ratios carry.
+- `-Xmn` on the chart's JVM arms and batched credits in clj-grpc, on the
+  cluster: both levers were measured on x86 only, and every JVM figure above
+  carries the Serial default young generation.
 - ~~Typed interop on an unsaturated multi-core host~~ — done 2026-09-12: the
   advantage tracks the mode (streaming −10–22%, unary nil), not the cores. It
   does not change the ordering above.
@@ -297,11 +305,62 @@ per-thread read of the server at that plateau says why: the connection's
 event loop is the busiest thread at 82%, the four carriers sit at 52% each,
 nothing is saturated — one connection's inbound path still runs through one
 loop, and that is the ceiling virtual threads reach, not the cores. `:direct`
-with eight connections at 4 cores plateaued with both sides under 75%, and
-quadrupling the client's in-flight budget moved it 5% (~268,000 → ~281,000;
-virtual threads ~163,000 → ~179,000), so that plateau is not the client's
-budget, not the cores and not the driver — unresolved, and it leaves the
-ratio between the executors where it was.
+with eight connections at 4 cores plateaued at ~278,000 with both sides under
+75%; quadrupling the client's in-flight budget moved it 5%, and the cause
+turned out to be the garbage collector's default young generation (next
+section): with one sized, the same shape delivers ~487,000 on 3.9 cores.
+
+### Levers for the virtual-thread executor — and one that moves both
+
+Measured 2026-09-12 on the same pinned host, one lever at a time against a
+same-session baseline and then stacked; predictions fixed before each phase.
+Streaming, 4 cores, 40 streams on one connection (baseline ~240,000 msg/s at
+0.013 ms) and on eight (~166,000 at 0.020). Raw tables and the experiment
+patch: `results/2026-09-12-local-vt-levers/`.
+
+**The JVM under a 1 GB limit runs Serial GC with a ~5 MB young generation.**
+JDK 21 (and 25) is not "server-class" below 2 GB and picks Serial; the young
+generation starts tiny and grows slowly, so a streaming arm collects almost
+continuously and every collection is a safepoint that stalls the loops and
+the carriers. The cluster's 1-CPU arms are the same shape.
+
+| lever | one connection | eight connections | cost |
+|---|---|---|---|
+| **size the young generation** (`-Xmn256m`; ParallelGC gives the same) | ~303,000, **+25%** | ~221,000, **+33%** | +170–280 MB RSS |
+| **batch inbound credits** (`request(n)` instead of `request(1)` per message) | ~303,000 at 0.010 ms, **+27%**, −23% CPU/msg | ~230,000 at 0.013, **+40%**, −35% CPU/msg | none |
+| two event loops instead of the default eight | nil | ~189,000, +14% | none |
+| a long-lived virtual thread per call | nil | +7% | not worth it |
+| G1 / generational ZGC instead of Serial | +15% / +6% | — | +130 / +540 MB RSS |
+| JDK 25 runtime | −12% | +30% at 727 MB RSS | not a lever |
+| **stacked** (young gen + credits, + two loops on eight) | **~445,000 at 0.008–0.009** | **~414,000 at 0.009**, CPUs at 98% | |
+
+**The GC lever is young-generation size, not the collector.** Serial with
+`-Xmn256m`, ParallelGC, and both land on the same ~303,000; G1 and ZGC are
+worse than a sized Serial and cost more memory. It moves `:direct` just as
+much: on eight connections `:direct` goes from ~278,000 to ~468,000 (Serial +
+`-Xmn256m`) or ~487,000 (Parallel) at 0.008 ms on 3.9 cores — which is what
+the "unresolved plateau" above was.
+
+**Batched credits are the one lever that lowers CPU per message.** grpc-java's
+streaming listener re-requests one credit per delivered message; on an
+off-loop executor that is one hop from the handler's thread back to the
+event loop per message, and the loop was the single-connection ceiling.
+Requesting eight at a time removes it; 8, 32 and 128 give the same number.
+It is a ten-line change in clj-grpc's bidi wiring (`disableAutoRequest` +
+`request(n)`), currently an env-gated experiment patch, not yet an option.
+
+**Stacked, virtual threads reach 85–90% of tuned `:direct` on the same
+cores**, from 60–65% at the defaults, and the single-connection ceiling
+(~445,000, where the single driver worker was also at its limit) is now above
+`:direct`'s untuned eight-connection one. The executor rule stands — one
+connection wants virtual threads, many want `:direct` — but the gap between
+them is mostly two defaults, not the executors.
+
+**What this implies for the ladder:** every JVM figure in this document was
+measured with the Serial default young generation, on the cluster as here.
+The 1-CPU arms are less exposed (GC was 5–7% of their profiles) but not
+immune; `-Xmn` on the chart's JVM arms is the next lever to measure there,
+and batched credits would move the streaming rung on both executors.
 
 ## Where the CPU goes
 
@@ -386,6 +445,8 @@ says what you lose by turning one off, not what you gain by adding it.
 | clj-protobuf's descriptor-compiled codec | 6–17% CPU; protobuf 26% of samples → 2% | **yes**, chart default |
 | `:direct` over the default virtual-thread executor | 15–27% CPU, ~25% stream capacity, p50 roughly half at 1 CPU; on multi-core pods it depends on connections — see "The executor, and cores" | **yes**, arm default |
 | protoc-gen-clojure `interop=true` | p50 −9 to −45%; CPU −10–22% per streamed message, nil (0–4%) per unary request — see below | no, a separate arm |
+| a sized young generation (`-Xmn256m`; the 1 GB-limit default is Serial with ~5 MB) | +25–33% streaming on virtual threads, +70% on `:direct` with eight connections, at 4 cores (x86) | **no** — the arms run the default |
+| batched inbound credits (`request(n)` per n messages) | +27–40% streaming on virtual threads, −23–35% CPU/msg (x86) | **no** — an experiment patch, not yet a clj-grpc option |
 
 ### Where the ladder's numbers come from
 
