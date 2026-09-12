@@ -49,6 +49,9 @@ The cluster's 1-CPU arms are the same shape.
 | direct-serialyoung-8conn | 468,077 | 0.008 | 473 | +181% |
 | combo-1conn-high | 448,962 | 0.008 | 422 | +83% |
 | combo-loops2-8conn-high | 414,086 | 0.009 | 574 | +149% |
+| opt-1conn | 394,713* | 0.009 | 447 | +61% |
+| opt-loops2-8conn | 379,928 | 0.010 | 448 | +128% |
+| opt-direct-8conn | 399,614* | 0.010 | 460 | +140% |
 
 * delivered everything offered at its peak step (ramp-limited; a floor)
 
@@ -77,3 +80,7 @@ The cluster's 1-CPU arms are the same shape.
 - Stacked, the virtual-thread executor reaches 85–90% of tuned `:direct` on
   the same cores, from 60–65% at the defaults, and its single-connection
   ceiling (~445k) is now above `:direct`'s untuned eight-connection one.
+- The `opt-*` rows are the productized form — clj-grpc's `:inbound-credits 8`
+  and the chart's `-Xmn256m` on the Serial default, `opt.jar` built from
+  #97 — and reproduce the experiment: ~395k on one connection, ~380k on
+  eight with two loops, and `:direct` on eight delivering all 400k offered.

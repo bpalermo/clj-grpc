@@ -52,3 +52,9 @@
 #NH-RUN combo-1conn-high end=1789185090
 #NH-RUN combo-loops2-8conn-high start=1789185108
 #NH-RUN combo-loops2-8conn-high end=1789185444
+#NH-RUN opt-1conn start=1789208607
+#NH-RUN opt-1conn end=1789208941
+#NH-RUN opt-loops2-8conn start=1789208947
+#NH-RUN opt-loops2-8conn end=1789209282
+#NH-RUN opt-direct-8conn start=1789209321
+#NH-RUN opt-direct-8conn end=1789209657
