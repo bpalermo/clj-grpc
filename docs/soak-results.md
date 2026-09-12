@@ -493,11 +493,17 @@ identical between the two fixtures), so the per-message saving is about
 half the decode-only saving — 0.72 µs predicted, 0.5–0.7 measured. Nothing
 is lost to the transport; the message simply contains a second operation
 the change does not touch. It is the compiled arm's counterpart of
-`interop=true`'s typed reads without generated Java classes. Whether the
-alternative design (parsing straight into the record, skipping the compiled
-message) has anything left to add is an open three-way measurement on
-clj-protobuf's side — its earlier −26% was against the hinted arm, not
-this baseline, and cannot be compared with the −44% above.
+`interop=true`'s typed reads without generated Java classes. The
+alternative design — parsing straight into the record and giving up the
+`Message` contract and unknown-field preservation — was measured against
+it three ways in one JVM on clj-protobuf's side: typed −42% / −36% against
+compiled on the realistic and dense shapes, the parse-into-record
+prototype −35% / −19%, so the path that keeps the contract is the faster
+one and the question is closed (the prototype was a naive tag loop, so it
+bounds the idea's floor rather than its ceiling; nobody is scheduling the
+rebuild that would find out). That second run also reproduces the
+field-dense band: −42% / −36% against −44% / −44% in the nine-shape run,
+two harnesses, same band.
 
 **Streaming's gain over unary is grpc-java shrinking**, 8.4% of samples (0.023
 ms) to 3.8% (0.006 ms): per-RPC setup, headers and trailers amortized over a
