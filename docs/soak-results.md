@@ -473,6 +473,20 @@ four times the fields is not four times dearer.
 45.9/s, 7.5 s throttled — which inflates its CPU. Node stayed at 2.2–3.1 of 4
 throughout, so none of this is host-limited.)*
 
+**A typed read path for the compiled arm is worth 4–9% per streamed
+message where the message is cheapest, and little elsewhere.**
+protoc-gen-clojure 0.7.0 reads a compiled message's slots directly by
+declaration index (clj-protobuf 0.3.0's `rt/slot`) instead of through the
+descriptor per field. Measured as a one-variable pair on the pinned x86
+host (`results/2026-09-12-local-typed-slot/`): `:direct` one connection
+7.8 → 7.1 µs per message (−6–9%, +8% capacity), virtual threads one
+connection 9.6 → 9.0 (−4–6%), eight-connection shapes 0–3%. A constant
+~0.5–0.7 µs saved per message, which is the conversion inside the field
+term; the codec's own bench (no transport) puts its field term at ~80 ns
+per leaf, so this is most of what typing the read path can take on this
+stack. It is the compiled arm's counterpart of `interop=true`'s typed reads
+without generated Java classes.
+
 **Streaming's gain over unary is grpc-java shrinking**, 8.4% of samples (0.023
 ms) to 3.8% (0.006 ms): per-RPC setup, headers and trailers amortized over a
 stream. What remains is protobuf, syscalls and copies — the message itself.
@@ -495,6 +509,7 @@ says what you lose by turning one off, not what you gain by adding it.
 | a sized young generation (`-Xmn256m`; the 1 GB-limit default is Serial with ~5 MB) | +25–33% streaming on virtual threads, +70% on `:direct` with eight connections, at 4 cores (x86) | chart default from 0.2.23 (`jvmOptions`); the ladder above predates it |
 | batched inbound credits (clj-grpc `:inbound-credits`) | +27–40% streaming on virtual threads, −23–35% CPU/msg (x86) | chart default 8 from 0.2.23 (`inboundCredits`); the ladder above predates it |
 | `:worker-threads` 1–2 (Netty's default is 2 × cores) | +10–12% streaming for a many-connection virtual-thread server; nil on one connection; leave the default for `:direct` (x86) | no — an option since #99 |
+| protoc-gen-clojure 0.7.0's typed-slot read path on the compiled arm | −6–9% CPU per streamed message on `:direct` one connection (+8% capacity), −4–6% on virtual threads one connection, 0–3% on eight-connection shapes (x86) | the fixture in this PR; the ladder above predates it |
 | `:initial-flow-control-window` 16 MiB | nil on one connection (better tails); +17% on eight connections with two loops, one run (x86) | no — an option since #99 |
 | virtual-thread scheduler parallelism at cores − loops | nil on one connection, −11% on eight (x86) | no |
 
