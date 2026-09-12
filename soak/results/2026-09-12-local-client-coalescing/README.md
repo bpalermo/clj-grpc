@@ -29,4 +29,9 @@ breakdown said. B1's "kernel share falls by a third" failed — the kernel
 time is the writes' `writev`, not the reads. Client coalescing is a
 latency-for-CPU trade worth ~9% at best; it is not a lever to recommend
 over batching at the message level, which pays the loop once for N on
-both sides.
+both sides. Two things to carry forward: the experiment bounds what any
+client-side change can do for the server's loop at roughly a tenth — the
+other nine tenths are the server's own write side; and
+`--stream-batch-messages` is a ceiling, the flush interval sets the
+achieved batch at these per-stream rates, so read `stream_batch_flushes`
+and never N off the command line.
