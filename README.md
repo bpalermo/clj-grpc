@@ -107,6 +107,11 @@ Two measured levers, honest about their trade:
   CPU per message, and every connection added to a virtual-thread server
   costs it throughput. So `:direct` is for 1-CPU pods and many-connection
   clients; virtual threads for a single-connection client on a multi-core pod.
+  Two defaults cap both: under a 1 GB container limit the JVM runs Serial
+  GC with a ~5 MB young generation, and grpc-java re-requests one credit per
+  streamed message. `-Xmn256m` is worth +25–70% streaming on 4 cores;
+  batching the credits +27–40% on virtual threads at −23–35% CPU per message
+  (`:inbound-credits n` on the server; the soak chart sets both by default).
   The case against `:direct` is unchanged and absolute: a handler that
   blocks on a direct executor stalls every connection on that loop. Default
   stays virtual threads — the only safe setting for handlers that may block,

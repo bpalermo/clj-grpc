@@ -1,0 +1,91 @@
+diff --git a/src/clj_grpc/server.clj b/src/clj_grpc/server.clj
+index ec1f7ef..77b9555 100644
+--- a/src/clj_grpc/server.clj
++++ b/src/clj_grpc/server.clj
+@@ -132,9 +132,28 @@
+        (invoke [_ obs]
+          (let [^StreamObserver obs obs
+                send!  (fn [msg] (.onNext obs msg))
+-               close! (fn [] (.onCompleted obs))]
++               close! (fn [] (.onCompleted obs))
++               ;; EXPERIMENT: batch inbound flow-control credits. grpc-java's
++               ;; auto-request re-requests one message per delivered message,
++               ;; which under an off-loop executor is one hop back to the
++               ;; event loop per message. REQUEST_BATCH=n requests n credits
++               ;; up front and n more every n messages.
++               batch  (some-> (System/getenv "REQUEST_BATCH") Long/parseLong)]
+            (try
+-             (observer-fns (handler send! close!) obs)
++             (let [fns (handler send! close!)
++                   fns (if (and batch (instance? io.grpc.stub.ServerCallStreamObserver obs))
++                         (let [^io.grpc.stub.ServerCallStreamObserver sobs obs
++                               n (java.util.concurrent.atomic.AtomicLong. 0)
++                               on-next (:on-next fns)]
++                           (.disableAutoRequest sobs)
++                           (.request sobs (int batch))
++                           (assoc fns :on-next
++                                  (fn [msg]
++                                    (when on-next (on-next msg))
++                                    (when (zero? (rem (.incrementAndGet n) batch))
++                                      (.request sobs (int batch))))))
++                         fns)]
++               (observer-fns fns obs))
+              (catch Throwable t
+                (fail! obs t)
+                (observer-fns {} obs)))))))))
+@@ -153,6 +172,45 @@
+ (defn- default-port []
+   (or (some-> (System/getenv "PORT") Long/parseLong) 8080))
+ 
++;; EXPERIMENT (CALL_EXECUTOR=percall): one long-lived virtual thread per call
++;; instead of a virtual thread per task. grpc-java hands every listener
++;; callback of a call to the call's executor (already serialized per call);
++;; with a thread-per-task executor that is a thread created and torn down per
++;; message. Here the call's thread parks on a queue between messages and is
++;; released by the call's terminal callback, which runs on that same thread.
++(def ^:private ^ThreadLocal call-queue (ThreadLocal.))
++(def ^:private ^Runnable call-end (fn []))
++
++(defn- per-call-executor ^Executor []
++  (let [q (java.util.concurrent.LinkedBlockingQueue.)
++        ^java.lang.Thread$Builder b (Thread/ofVirtual)
++        worker (fn []
++                 (.set call-queue q)
++                 (loop []
++                   (let [^Runnable r (.take q)]
++                     (when-not (identical? r call-end)
++                       (try (.run r) (catch Throwable _))
++                       (recur)))))]
++    (.start (.unstarted b ^Runnable worker))
++    (reify Executor
++      (execute [_ r] (.put q r)))))
++
++(def ^:private per-call-executor-supplier
++  (reify io.grpc.ServerCallExecutorSupplier
++    (getExecutor [_ _call _headers] (per-call-executor))))
++
++(defn- end-call! []
++  (when-let [^java.util.concurrent.LinkedBlockingQueue q (.get call-queue)]
++    (.put q call-end)))
++
++(def ^:private per-call-end-interceptor
++  (reify ServerInterceptor
++    (interceptCall [_ call headers next]
++      (let [l (.startCall ^io.grpc.ServerCallHandler next call headers)]
++        (proxy [io.grpc.ForwardingServerCallListener$SimpleForwardingServerCallListener] [l]
++          (onComplete [] (try (proxy-super onComplete) (finally (end-call!))))
++          (onCancel [] (try (proxy-super onCancel) (finally (end-call!)))))))))
++
+ (defn server
+   "Build (without starting) a server. Returns {:server io.grpc.Server
+   :health HealthStatusManager-or-nil :address SocketAddress}."
+@@ -174,6 +232,9 @@
+     (if (= :direct executor)
+       (.directExecutor builder)
+       (.executor builder ^Executor (or executor owned-executor)))
++    (when (= "percall" (System/getenv "CALL_EXECUTOR"))
++      (.callExecutor builder per-call-executor-supplier)
++      (.intercept builder per-call-end-interceptor))
+     (when max-inbound-message-size
+       (.maxInboundMessageSize builder (int max-inbound-message-size)))
+     (when tls
