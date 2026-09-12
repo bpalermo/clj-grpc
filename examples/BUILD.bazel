@@ -20,7 +20,10 @@ clj_library(
 
 clj_library(
     name = "echo_lib",
-    srcs = glob(["src/**/*.clj"]),
+    srcs = glob(
+        ["src/**/*.clj"],
+        exclude = ["src/example/echo/async.clj"],
+    ),
     namespaces = [
         "example.echo.server",
         "example.echo.client",
@@ -65,7 +68,10 @@ clj_binary(
 
 clj_library(
     name = "echo_embedded_lib",
-    srcs = glob(["src/**/*.clj"]),
+    srcs = glob(
+        ["src/**/*.clj"],
+        exclude = ["src/example/echo/async.clj"],
+    ),
     namespaces = [
         "example.echo.server",
         "example.echo.client",
@@ -97,9 +103,71 @@ clj_native_binary(
     tags = ["manual"],
 )
 
+# The core.async example: a consumer of the public handler shapes, kept out of
+# echo_lib and the native image because core.async is its dependency and not
+# the library's.
+clj_library(
+    name = "async_lib",
+    srcs = ["src/example/echo/async.clj"],
+    namespaces = ["example.echo.async"],
+    strip_prefix = "examples/src",
+    deps = [
+        ":echo_gen",
+        "//examples/proto:echo_java_proto",
+        "//src:clj_grpc",
+        "@deps//:com_github_bpalermo_clj_protobuf",
+        "@deps//:com_google_protobuf_protobuf_java",
+        "@deps//:org_clojure_clojure",
+        "@deps//:org_clojure_core_async",
+        # core.async's go machinery loads tools.analyzer.jvm, which needs these
+        # two at load time. They are named here because the lockfile attributes
+        # each jar to a single parent in the resolved tree — asm's is Jetty's
+        # annotations jar and tools.reader's is pedestal — so neither reaches a
+        # target through core.async, however the poms read. Same flat-lock
+        # limitation that makes src/BUILD.bazel list every netty jar.
+        "@deps//:org_clojure_tools_reader",
+        "@deps//:org_ow2_asm_asm",
+    ],
+)
+
+# bazel run //examples:async — the same Echo service, written over channels.
+clj_binary(
+    name = "async",
+    main = "example.echo.async",
+    tags = ["manual"],
+    deps = [":async_lib"],
+)
+
+clj_library(
+    name = "async_test_lib",
+    srcs = ["test/example/echo/async_test.clj"],
+    namespaces = ["example.echo.async-test"],
+    strip_prefix = "examples/test",
+    deps = [
+        ":async_lib",
+        ":echo_gen",
+        "//src:clj_grpc",
+        "@deps//:org_clojure_clojure",
+        "@deps//:org_clojure_core_async",
+        "@deps//:org_clojure_tools_reader",
+        "@deps//:org_ow2_asm_asm",
+    ],
+)
+
+# Runs on every `bazel test //...`: the round trip, and the backpressure path
+# the adapter rests on.
+clj_test(
+    name = "async_test",
+    ns = "example.echo.async-test",
+    deps = [":async_test_lib"],
+)
+
 clj_library(
     name = "example_e2e_test_lib",
-    srcs = glob(["test/**/*.clj"]),
+    srcs = glob(
+        ["test/**/*.clj"],
+        exclude = ["test/example/echo/async_test.clj"],
+    ),
     namespaces = ["example.echo.example-e2e-test"],
     strip_prefix = "examples/test",
     deps = [
