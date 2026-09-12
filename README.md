@@ -111,7 +111,7 @@ Two measured levers, honest about their trade:
   GC with a ~5 MB young generation, and grpc-java re-requests one credit per
   streamed message. `-Xmn256m` is worth +25–70% streaming on 4 cores;
   batching the credits +27–40% on virtual threads at −23–35% CPU per message
-  (an experiment patch so far, see the soak results).
+  (`:inbound-credits n` on the server; the soak chart sets both by default).
   The case against `:direct` is unchanged and absolute: a handler that
   blocks on a direct executor stalls every connection on that loop. Default
   stays virtual threads — the only safe setting for handlers that may block,

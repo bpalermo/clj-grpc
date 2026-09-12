@@ -346,8 +346,9 @@ streaming listener re-requests one credit per delivered message; on an
 off-loop executor that is one hop from the handler's thread back to the
 event loop per message, and the loop was the single-connection ceiling.
 Requesting eight at a time removes it; 8, 32 and 128 give the same number.
-It is a ten-line change in clj-grpc's bidi wiring (`disableAutoRequest` +
-`request(n)`), currently an env-gated experiment patch, not yet an option.
+It is clj-grpc's `:inbound-credits n` server option (`disableAutoRequest` +
+`request(n)` on the streaming-in handlers), and the chart sets 8 on the gRPC
+arms from 0.2.23, alongside `jvmOptions: "-Xmn256m"` on every JVM arm.
 
 **Stacked, virtual threads reach 85–90% of tuned `:direct` on the same
 cores**, from 60–65% at the defaults, and the single-connection ceiling
@@ -445,8 +446,8 @@ says what you lose by turning one off, not what you gain by adding it.
 | clj-protobuf's descriptor-compiled codec | 6–17% CPU; protobuf 26% of samples → 2% | **yes**, chart default |
 | `:direct` over the default virtual-thread executor | 15–27% CPU, ~25% stream capacity, p50 roughly half at 1 CPU; on multi-core pods it depends on connections — see "The executor, and cores" | **yes**, arm default |
 | protoc-gen-clojure `interop=true` | p50 −9 to −45%; CPU −10–22% per streamed message, nil (0–4%) per unary request — see below | no, a separate arm |
-| a sized young generation (`-Xmn256m`; the 1 GB-limit default is Serial with ~5 MB) | +25–33% streaming on virtual threads, +70% on `:direct` with eight connections, at 4 cores (x86) | **no** — the arms run the default |
-| batched inbound credits (`request(n)` per n messages) | +27–40% streaming on virtual threads, −23–35% CPU/msg (x86) | **no** — an experiment patch, not yet a clj-grpc option |
+| a sized young generation (`-Xmn256m`; the 1 GB-limit default is Serial with ~5 MB) | +25–33% streaming on virtual threads, +70% on `:direct` with eight connections, at 4 cores (x86) | chart default from 0.2.23 (`jvmOptions`); the ladder above predates it |
+| batched inbound credits (clj-grpc `:inbound-credits`) | +27–40% streaming on virtual threads, −23–35% CPU/msg (x86) | chart default 8 from 0.2.23 (`inboundCredits`); the ladder above predates it |
 
 ### Where the ladder's numbers come from
 
