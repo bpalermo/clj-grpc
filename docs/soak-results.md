@@ -486,13 +486,18 @@ term. clj-protobuf's own bench (no transport, same-JVM A/B) puts the
 decode-only saving at 1.45 µs on the realistic shape — 3.28 → 1.83 µs, and
 −37 to −47% across its six field-dense shapes, nil on the three
 collection-dominated ones, with an encode column that changed nothing and
-wandered ±20–30% as that harness's noise floor. The two agree on the shape
-of it: a fixed amount of per-field work removed, a large fraction of a
-decode-only microbenchmark and a small fraction of a whole request. It is
-the compiled arm's counterpart of `interop=true`'s typed reads without
-generated Java classes, and on those bench numbers it already exceeds the
-hand-written parse-into-record prototype (−26% realistic) that was the
-alternative design.
+wandered ±20–30% as that harness's noise floor. The two agree once the
+denominators are named: a streamed message here is one decode plus one
+encode, and 0.7.0 changes only the decode (the write paths are textually
+identical between the two fixtures), so the per-message saving is about
+half the decode-only saving — 0.72 µs predicted, 0.5–0.7 measured. Nothing
+is lost to the transport; the message simply contains a second operation
+the change does not touch. It is the compiled arm's counterpart of
+`interop=true`'s typed reads without generated Java classes. Whether the
+alternative design (parsing straight into the record, skipping the compiled
+message) has anything left to add is an open three-way measurement on
+clj-protobuf's side — its earlier −26% was against the hinted arm, not
+this baseline, and cannot be compared with the −44% above.
 
 **Streaming's gain over unary is grpc-java shrinking**, 8.4% of samples (0.023
 ms) to 3.8% (0.006 ms): per-RPC setup, headers and trailers amortized over a
