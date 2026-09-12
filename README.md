@@ -107,6 +107,9 @@ Two measured levers, honest about their trade:
   CPU per message, and every connection added to a virtual-thread server
   costs it throughput. So `:direct` is for 1-CPU pods and many-connection
   clients; virtual threads for a single-connection client on a multi-core pod.
+  A virtual-thread server with many connections also wants `:worker-threads`
+  1–2 rather than Netty's 2 × cores (+10–12% streamed messages per second on
+  4 cores); the loops only do I/O there and compete with the carriers.
   Two defaults cap both: under a 1 GB container limit the JVM runs Serial
   GC with a ~5 MB young generation, and grpc-java re-requests one credit per
   streamed message. `-Xmn256m` is worth +25–70% streaming on 4 cores;

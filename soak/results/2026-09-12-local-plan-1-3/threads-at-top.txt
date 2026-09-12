@@ -1,0 +1,36 @@
+## win16m-1conn at 09:41:29 total 3.61 cores
+  97.3% clj-grpc-epoll-
+  65.6% ForkJoinPool-1-
+  65.5% ForkJoinPool-1-
+  65.5% ForkJoinPool-1-
+  64.5% ForkJoinPool-1-
+   1.6% VM Thread
+   0.7% C2 CompilerThre
+   0.1% VM Periodic Tas
+## par3-1conn at 09:53:25 total 3.68 cores
+  97.2% clj-grpc-epoll-
+  89.8% ForkJoinPool-1-
+  89.8% ForkJoinPool-1-
+  89.7% ForkJoinPool-1-
+   1.4% VM Thread
+   0.1% VM Periodic Tas
+   0.1% Reference Handl
+   0.1% Monitor Deflati
+## base2-1conn at 10:05:25 total 3.56 cores
+  95.0% clj-grpc-epoll-
+  65.2% ForkJoinPool-1-
+  65.0% ForkJoinPool-1-
+  64.9% ForkJoinPool-1-
+  64.8% ForkJoinPool-1-
+   1.4% VM Thread
+   0.1% C2 CompilerThre
+   0.0% java
+## win16m2-1conn at 10:25:19 total 3.59 cores
+  97.5% clj-grpc-epoll-
+  65.4% ForkJoinPool-1-
+  65.3% ForkJoinPool-1-
+  65.2% ForkJoinPool-1-
+  64.1% ForkJoinPool-1-
+   1.6% VM Thread
+   0.2% C2 CompilerThre
+   0.0% java
