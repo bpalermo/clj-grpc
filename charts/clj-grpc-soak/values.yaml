@@ -120,6 +120,25 @@ runner:
 directLinking:
   enabled: true
 
+# JVM flags for every `jvm: true` arm, composed into JAVA_TOOL_OPTIONS ahead
+# of direct linking and the agent. Default: a sized young generation. Under
+# these pods' 1 Gi limit the JVM is not "server-class" and picks Serial GC
+# with a young generation that starts at ~5 MB, so a streaming arm collects
+# almost continuously; `-Xmn256m` measured +25–33% streamed messages on the
+# virtual-thread executor and +70% on :direct with eight connections at
+# 4 cores (soak/results/2026-09-12-local-vt-levers). The collector is second
+# order: Serial with this young generation matches ParallelGC. Empty to run
+# the JVM's own defaults. Since 0.2.23.
+jvmOptions: "-Xmn256m"
+
+# Inbound flow-control credits on the gRPC JVM arms (INBOUND_CREDITS → the
+# server's :inbound-credits): ask the transport for this many messages at a
+# time instead of grpc-java's one per delivered message. Measured +27–40%
+# streamed messages per second on virtual threads at −23–35% CPU per message;
+# the batch size does not matter above a handful. Empty to leave grpc-java's
+# auto-request in place. Since 0.2.23.
+inboundCredits: "8"
+
 # Pyroscope's Java agent on the `profile: true` arms, attached through
 # JAVA_TOOL_OPTIONS=-javaagent:/pyroscope.jar only when this is on; off, no
 # arm carries any agent env at all. Off by default: the agent's own overhead

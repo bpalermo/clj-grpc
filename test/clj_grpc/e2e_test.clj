@@ -170,6 +170,38 @@
           (client/shutdown ch {:grace-ms 1000})
           (server/shutdown srv {:grace-ms 1000}))))))
 
+(deftest inbound-credits-batch-flow-control
+  (testing "with :inbound-credits, streaming-in handlers see every message, in order"
+    (let [srv (-> (server/server {:services [greeter-service]
+                                  :address 0
+                                  :inbound-credits 4})
+                  server/start)
+          ch (client/channel (str "localhost:" (server/port srv)) {:plaintext true})
+          calls (client/client ch g/greeter-methods {:deadline-ms 10000})]
+      (try
+        (testing "bidi, more messages than one batch of credits"
+          (let [replies (atom [])
+                done (promise)
+                {:keys [send! close!]}
+                ((:chat calls) {:on-next #(swap! replies conj (:message (g/proto->HelloReply %)))
+                                :on-complete #(deliver done true)})]
+            (dotimes [i 11] (send! (g/HelloRequest->proto {:name (str i)})))
+            (close!)
+            (is (true? (deref done 10000 ::timeout)))
+            (is (= (mapv #(str "Echo " %) (range 11)) @replies))))
+        (testing "client streaming counts every message"
+          (let [{:keys [send! close! response]} ((:collect-hellos calls) nil)]
+            (dotimes [i 9] (send! (g/HelloRequest->proto {:name (str i)})))
+            (close!)
+            (is (= "Hello 9 of you"
+                   (:message (g/proto->HelloReply (deref response 10000 ::timeout)))))))
+        (finally
+          (client/shutdown ch {:grace-ms 1000})
+          (server/shutdown srv {:grace-ms 1000})))))
+  (testing "a non-positive value is refused at construction"
+    (is (thrown? IllegalArgumentException
+                 (server/server {:services [greeter-service] :address 0 :inbound-credits 0})))))
+
 (deftest aggressive-keepalives-survive-when-permitted
   (testing "client pings far below gRPC's 5-minute default permit stay alive
             because the server grants the permit — the preset pairing"
