@@ -274,6 +274,26 @@ fixed per-message costs of which only the first is the codec's to move.
 Once a shape's per-message cost approaches the loop floor, further codec
 work cannot help that shape, however much decode time it still shows.
 
+**Two more per-message optimisations in code we own measured nil, and
+that is the finding.** After the typed read path, the carrier's largest
+owned blocks in the loop-breakdown JFR were the compiled arm's generic
+per-field write dispatch (`codec/set-field!` → `map->message`, keyword
+lookups and derefs) and grpc-java's marshaller, whose per-thread parse
+buffer never hits under a thread-per-task executor. Both were built and
+measured as one-variable pairs (`results/2026-09-12-local-typed-write/`,
+`results/2026-09-12-local-direct-marshaller/`): a typed write path
+(protoc-gen-clojure branch 03c1d8c emitting `codec/slot-set!` per field on
+clj-protobuf 0.4.0, byte-identical on clj-protobuf's suite) is within ±1% on
+every shape at the knee and up to +7% below it on `:direct` one connection;
+clj-grpc's own zero-copy, one-write marshaller is nil on one connection
+under both executors and −5% / +7% delivered only on virtual threads with
+eight connections. Neither ships. Together with the read path's 4–9% they
+say where streaming cost lives on this stack: the read side's per-field
+conversion was the one owned per-message cost worth taking, the write
+side's is already dominated by the coercion and the field write it cannot
+remove, and below those sit the loop and the transport. The next owned
+lever is not per-field work.
+
 **And the floor is per message, not per frame.** With the Nighthawk fork
 coalescing 25 client messages per inbound DATA frame
 (`results/2026-09-12-local-client-coalescing/`), the loop drops from 0.96

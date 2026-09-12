@@ -1,0 +1,129 @@
+diff --git a/src/clj_grpc/service.clj b/src/clj_grpc/service.clj
+index 6ed1143..35401f0 100644
+--- a/src/clj_grpc/service.clj
++++ b/src/clj_grpc/service.clj
+@@ -25,12 +25,17 @@
+   (:require [clj-protobuf.runtime :as rt]
+             [clojure.string :as string])
+   (:import [com.google.protobuf
++            CodedInputStream
+             Descriptors$FileDescriptor
+             Descriptors$MethodDescriptor
+             Descriptors$ServiceDescriptor
+-            Message]
+-           [io.grpc MethodDescriptor MethodDescriptor$MethodType]
+-           [io.grpc.protobuf ProtoUtils]))
++            InvalidProtocolBufferException
++            Message
++            Parser]
++           [io.grpc Drainable HasByteBuffer KnownLength MethodDescriptor
++            MethodDescriptor$Marshaller MethodDescriptor$MethodType Status]
++           [io.grpc.protobuf ProtoUtils]
++           [java.io ByteArrayInputStream InputStream OutputStream]))
+ 
+ (set! *warn-on-reflection* true)
+ 
+@@ -52,6 +57,78 @@
+ ;; ---------------------------------------------------------------------------
+ ;; The service value
+ 
++;; ---------------------------------------------------------------------------
++;; Marshallers
++
++;; grpc-java's own marshaller (ProtoUtils/marshaller) parses an inbound message
++;; by copying it into a per-thread byte[] it keeps in a ThreadLocal, then
++;; decoding from the array. That is a good trade on a platform thread pool;
++;; under the virtual-thread default every message runs on a fresh thread, the
++;; ThreadLocal never hits, and the copy is paid in full every time. This
++;; marshaller parses grpc's inbound buffers where they lie — Netty's, exposed
++;; through io.grpc.HasByteBuffer — and hands the framer an already-serialized
++;; array on the way out, so the writer makes one bulk write instead of a
++;; CodedOutputStream call per field through the framer's OutputStream adapter.
++;; Selected by -Dclj-grpc.marshaller=direct until it has earned the default.
++
++(defn- known-length-stream
++  "A KnownLength + Drainable view of a serialized message: the framer drains
++  it with one write."
++  ^InputStream [^bytes bs]
++  (proxy [ByteArrayInputStream KnownLength Drainable] [bs]
++    (drainTo [^OutputStream out]
++      (let [n (.available ^ByteArrayInputStream this)]
++        (.write out bs (- (alength bs) n) n)
++        n))))
++
++(defn- parse-with
++  "Parse one message from a CodedInputStream and check it was consumed whole."
++  [^Parser parser ^CodedInputStream cis]
++  (let [m (.parseFrom parser cis)]
++    (.checkLastTagWas cis 0)
++    m))
++
++(defn- parse-message
++  "Parse an inbound message. Zero-copy when the transport offers the whole
++  message as one ByteBuffer (io.grpc.HasByteBuffer — Netty's read buffer,
++  which holds a 1 KB message whole almost always); otherwise buffered from
++  the stream. Only the ONE-chunk case is safe: the composite buffer behind
++  the stream releases a chunk as soon as it is consumed, so buffers
++  collected across a skip can be freed and reused under load — not a
++  theory: it was 'Invalid protobuf byte sequence' on half the streams at
++  250k msg/s. The chunk is parsed before the stream is advanced."
++  [^Parser parser ^InputStream in]
++  (if (and (instance? HasByteBuffer in)
++           (.byteBufferSupported ^HasByteBuffer in))
++    (let [^java.nio.ByteBuffer bb (.getByteBuffer ^HasByteBuffer in)
++          n (.available in)]
++      (if (and bb (= (.remaining bb) n))
++        (let [m (parse-with parser (CodedInputStream/newInstance bb))]
++          (.skip in n)
++          m)
++        (parse-with parser (CodedInputStream/newInstance in))))
++    (parse-with parser (CodedInputStream/newInstance in))))
++
++(defn- direct-marshaller
++  ^MethodDescriptor$Marshaller [^Message prototype]
++  (let [^Parser parser (.getParserForType prototype)]
++    (reify MethodDescriptor$Marshaller
++      (stream [_ msg]
++        (known-length-stream (.toByteArray ^Message msg)))
++      (parse [_ in]
++        (try
++          (parse-message parser in)
++          (catch InvalidProtocolBufferException e
++            (throw (-> (Status/INTERNAL)
++                       (.withDescription "Invalid protobuf byte sequence")
++                       (.withCause e)
++                       (.asRuntimeException)))))))))
++
++(defn- marshaller ^MethodDescriptor$Marshaller [^Message prototype]
++  (if (= "direct" (System/getProperty "clj-grpc.marshaller"))
++    (direct-marshaller prototype)
++    (ProtoUtils/marshaller prototype)))
++
+ (defn- kebab [s]
+   (keyword
+    (-> s
+@@ -106,8 +183,8 @@
+            (.setType ^MethodDescriptor$MethodType (grpc-method-type type))
+            (.setFullMethodName
+             (MethodDescriptor/generateFullMethodName service-full-name (.getName md)))
+-           (.setRequestMarshaller (ProtoUtils/marshaller in))
+-           (.setResponseMarshaller (ProtoUtils/marshaller out))
++           (.setRequestMarshaller (marshaller in))
++           (.setResponseMarshaller (marshaller out))
+            (.build))))))
+ 
+ (defn service
+diff --git a/test/BUILD.bazel b/test/BUILD.bazel
+index a5c466b..08f3218 100644
+--- a/test/BUILD.bazel
++++ b/test/BUILD.bazel
+@@ -96,6 +96,9 @@ CODEC_TEST_DEPS = [d for d in TEST_DEPS if d != "//test/proto:greeter_java_proto
+ CODEC_POSITIONS = {
+     "compiled": [],
+     "dynamic": ["-Dclj-protobuf.codec=dynamic"],
++    # clj-grpc's own marshaller (zero-copy parse, one-write serialize) on the
++    # compiled codec; the property is read when a method descriptor is built.
++    "direct_marshaller": ["-Dclj-grpc.marshaller=direct"],
+ }
+ 
+ clj_library(
