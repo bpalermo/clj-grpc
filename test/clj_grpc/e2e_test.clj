@@ -202,6 +202,25 @@
     (is (thrown? IllegalArgumentException
                  (server/server {:services [greeter-service] :address 0 :inbound-credits 0})))))
 
+(deftest worker-threads-and-flow-window-serve
+  (testing "one event loop and a 4 MiB initial window serve every shape"
+    (let [srv (-> (server/server {:services [greeter-service]
+                                  :address 0
+                                  :worker-threads 1
+                                  :initial-flow-control-window (* 4 1024 1024)})
+                  server/start)
+          ch (client/channel (str "localhost:" (server/port srv)) {:plaintext true})]
+      (try
+        (exercise-all-shapes srv ch)
+        (finally
+          (client/shutdown ch {:grace-ms 1000})
+          (server/shutdown srv {:grace-ms 1000})))))
+  (testing "non-positive values are refused at construction"
+    (is (thrown? IllegalArgumentException
+                 (server/server {:services [greeter-service] :address 0 :worker-threads 0})))
+    (is (thrown? IllegalArgumentException
+                 (server/server {:services [greeter-service] :address 0 :initial-flow-control-window -1})))))
+
 (deftest aggressive-keepalives-survive-when-permitted
   (testing "client pings far below gRPC's 5-minute default permit stay alive
             because the server grants the permit — the preset pairing"

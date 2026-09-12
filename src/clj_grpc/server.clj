@@ -44,6 +44,16 @@
                   server whose clients keep connections warm (Knative, LBs)
                   must lower this to match. clj-grpc.knative pairs the two.
     :max-inbound-message-size bytes
+    :worker-threads n — Netty event loops for the connections; default 0 =
+                  Netty's 2 × cores, which assumes the loops run the
+                  handlers. Under the virtual-thread default they only do
+                  I/O and compete with the carriers: measured on a 4-core
+                  host, 2 loops instead of 8 were +14–21% streamed messages
+                  per second for an eight-connection server, nil for one
+                  connection. About half the cores is a good value for a
+                  virtual-thread server; leave the default for :direct.
+    :initial-flow-control-window bytes — where grpc-netty's HTTP/2 window
+                  starts (its default 1 MiB; BDP auto-tuning stays on).
     :inbound-credits n — for :client-streaming and :bidi handlers, ask the
                   transport for n messages at a time instead of grpc-java's
                   one per delivered message. Each request is a hop from the
@@ -192,7 +202,7 @@
   :health HealthStatusManager-or-nil :address SocketAddress}."
   [{:keys [services address port transport health reflection executor
            interceptors tls permit-keepalive max-inbound-message-size
-           inbound-credits]
+           inbound-credits worker-threads initial-flow-control-window]
     :or {health true}}]
   (let [addr      (transport/->address (or address (default-port)))
         unix?     (transport/unix-address? addr)
@@ -202,7 +212,9 @@
         ^ServerBuilder builder
         ((requiring-resolve 'clj-grpc.impl.netty/server-builder)
          addr {:transport transport :unix? unix?
-               :permit-keepalive permit-keepalive})
+               :permit-keepalive permit-keepalive
+               :worker-threads worker-threads
+               :initial-flow-control-window initial-flow-control-window})
         health-mgr (when health (HealthStatusManager.))
         owned-executor (when (nil? executor)
                          (Executors/newVirtualThreadPerTaskExecutor))]
@@ -216,6 +228,11 @@
                              (File. (str (:cert-chain tls)))
                              (File. (str (:private-key tls)))))
     (doseq [^ServerInterceptor i interceptors] (.intercept builder i))
+    (doseq [[k v] {:worker-threads worker-threads
+                   :initial-flow-control-window initial-flow-control-window}]
+      (when (and v (not (and (integer? v) (pos? v))))
+        (throw (IllegalArgumentException.
+                (str k " must be a positive integer, got " (pr-str v))))))
     (when inbound-credits
       (when-not (and (integer? inbound-credits) (pos? inbound-credits))
         (throw (IllegalArgumentException.

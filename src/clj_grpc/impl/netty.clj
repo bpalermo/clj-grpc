@@ -79,11 +79,17 @@
   as the generic ServerBuilder; clj-grpc.server layers the transport-agnostic
   configuration on top without touching a Netty type."
   ^io.grpc.ServerBuilder
-  [^java.net.SocketAddress addr {:keys [transport unix? permit-keepalive]}]
+  [^java.net.SocketAddress addr {:keys [transport unix? permit-keepalive
+                                        worker-threads initial-flow-control-window]}]
   (let [b (doto (io.grpc.netty.NettyServerBuilder/forAddress addr)
             (.channelType (server-channel-class transport unix?))
             (.bossEventLoopGroup (event-loop-group transport 1))
-            (.workerEventLoopGroup (event-loop-group transport 0)))]
+            ;; 0 = Netty's default of 2 × cores, sized for loops that do the
+            ;; work; under an off-loop executor they only do I/O.
+            (.workerEventLoopGroup (event-loop-group transport (or worker-threads 0))))]
+    (when initial-flow-control-window
+      ;; grpc-netty keeps BDP auto-tuning on; this only sets where it starts.
+      (.initialFlowControlWindow b (int initial-flow-control-window)))
     (when-let [{:keys [time-ms without-calls]} permit-keepalive]
       (when time-ms
         (.permitKeepAliveTime b (long time-ms)
