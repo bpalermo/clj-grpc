@@ -48,7 +48,9 @@ whose life is measured in seconds or whose pods sit idle, native.** On the
 cluster, same pod, same bodies, same driver, the native image delivers 0.34× the
 JVM's unary requests and 0.29× its streamed messages, at 3–4× the CPU each —
 one JVM pod does the work of three native ones — in about half the memory
-(40–106 MB against 150–190 MB at the knee). Its one decisive win is cold start:
+(40–106 MB against 150–190 MB at the knee). The gap is the platform, not the payload — removing the
+body (7-byte tier) leaves native at 0.23–0.38× the JVM. Its one decisive win is
+cold start:
 79 ms to first RPC against the JVM's ~1,750 ms on the loopback bench, 22×.
 Under overload it behaves like h2c, not like the JVM: p50 climbs to 1.7–2.5 s
 and `/metrics` stops answering.
@@ -72,14 +74,16 @@ run per mode.
 ### Virtual threads or `:direct`
 
 **`:direct` for a 1-CPU pod or a many-connection client; virtual threads for a
-few-connection client on a multi-core pod.** Measured off-cluster on a pinned
+single-connection client on a multi-core pod.** Measured off-cluster on a pinned
 x86 host, because the cluster cannot host it (below, "The executor, and
 cores"). One connection under `:direct` never uses more than one core, at any
 core count. Virtual threads spread that one connection across the cores it has
 — 2.5× `:direct`'s single-connection ceiling at 4 cores — and that is the shape
 a sidecar mesh or a single upstream channel produces. Given eight connections,
 `:direct` scales too and delivers ~1.7× the virtual-thread throughput on the
-same cores at half the CPU per message. Virtual threads cost 11–25% more per
+same cores at half the CPU per message — and every connection added to a
+virtual-thread server costs it throughput (one 237k, two 203k, eight 163k at
+4 cores), so the two executors want opposite client shapes. Virtual threads cost 11–25% more per
 streamed message and 30–65% more per unary request on every shape; on
 streaming that cost is flat with cores, on unary it grows 1.5× from one core
 to four. The safety rule is unchanged: a handler that blocks on `:direct`
@@ -87,16 +91,16 @@ stalls every connection on its loop.
 
 ### What would change this
 
-- A native tiny-tier run on the cluster: if native matches the JVM there, the
-  3–4× is the payload path and a future codec could narrow it; if it does not,
-  it is the platform.
+- ~~A native tiny-tier run on the cluster~~ — done 2026-09-12: the gap is the
+  platform (below). What would still move it is PGO or G1 on native.
 - PGO or G1 on native, which needs Oracle GraalVM, whose current builds fail
   every RPC; the CE image here ran Serial GC with `-Xmx512m -Xmn256m`.
 - The multi-core executor result is x86 and loopback. The cluster cannot
   host it (4-core nodes with ~2.2 cores of headroom); an arm64 host with
   four free cores would say whether the ratios carry.
-- Typed interop is already 9–12% cheaper at 2 cores and growing with cores; on
-  an unsaturated host it may be larger. It does not change the ordering above.
+- ~~Typed interop on an unsaturated multi-core host~~ — done 2026-09-12: the
+  advantage tracks the mode (streaming −10–22%, unary nil), not the cores. It
+  does not change the ordering above.
 
 ## The ladder — what a REST service gains from each switch
 
@@ -180,6 +184,16 @@ it is roughly 3–4× dearer than the JIT-compiled JVM at steady state, which is
 consistent with what a closed-world AOT compile of a dynamic language gives up.
 The August figure of ~1,550 unary on the k6 driver was the driver, not the arm.
 
+**The gap is the platform, not the payload.** Measured 2026-09-12 by running
+the same digest and the JVM `:direct` arm on the 7-byte tier the same night:
+native delivers 0.38× the JVM's unary requests (~4,700 vs ~12,300 at 1 CPU)
+and 0.23× its streamed messages (~11,200 vs ≥47,700), at 2.8× and 4.9× the CPU
+each — the same band as the 1 KB tier's 0.34× / 0.29×. Pre-registered: ≤0.45×
+on tiny means platform. So the 3–4× is AOT code quality, Serial GC and the
+absence of a JIT, and a native-aware codec would not narrow it; the levers
+that could are PGO and G1, which need Oracle GraalVM (currently failing every
+RPC). Raw tables: `results/2026-09-12-native-tiny/`.
+
 ## Connections, not just cores
 
 **A connection binds to one event loop, and under `:direct` that loop also runs
@@ -232,6 +246,13 @@ every core count.** Same streams over eight connections:
 | 1 | ~113,000 at 0.009 ms | ~55,000 at 0.018 ms | 2.1× |
 | 2 | ~179,000 at 0.010 ms (1.8 cores) | ~105,000 at 0.018 ms (1.9 cores) | 1.7× |
 | 4 | ~268,000 at 0.010 ms (2.7 cores) | ~163,000 at 0.020 ms (3.3 cores) | 1.6× |
+
+**And for virtual threads, connections cost.** Same 4 cores, streaming: one
+connection ~237,000 msg/s at 0.013 ms, two ~203,000 at 0.015, four ~187,000 at
+0.017, eight ~163,000 at 0.020 — monotonic, the mirror image of `:direct`,
+which goes from ~92,000 on one connection to ~268,000 on eight. So the two
+executors want opposite client shapes: virtual threads one connection,
+`:direct` as many as the client can give.
 
 **Virtual threads' cost per streamed message does not grow with cores** —
 0.015 / 0.015 / 0.013 ms on one connection, 0.018 / 0.018 / 0.020 on eight. That
@@ -364,7 +385,7 @@ says what you lose by turning one off, not what you gain by adding it.
 | `-Dclojure.compiler.direct-linking=true` on the arm's JVM | 3–16% CPU per request, 3–17% per streamed message | **yes**, chart default since 0.2.12 |
 | clj-protobuf's descriptor-compiled codec | 6–17% CPU; protobuf 26% of samples → 2% | **yes**, chart default |
 | `:direct` over the default virtual-thread executor | 15–27% CPU, ~25% stream capacity, p50 roughly half at 1 CPU; on multi-core pods it depends on connections — see "The executor, and cores" | **yes**, arm default |
-| protoc-gen-clojure `interop=true` | p50 −9 to −45%; CPU −3–4% at 1 CPU, −9–12% at 2 cores — see below | no, a separate arm |
+| protoc-gen-clojure `interop=true` | p50 −9 to −45%; CPU −10–22% per streamed message, nil (0–4%) per unary request — see below | no, a separate arm |
 
 ### Where the ladder's numbers come from
 
@@ -384,24 +405,30 @@ Direct linking is the largest single contributor at ~4.9% of per-request CPU,
 protobuf-java 4.36.1 ~2.9%, everything else ~1.8%. **clj-protobuf 0.2.2 → 0.2.5
 is nil** — 0.0 / −0.9 / −1.0 / +0.6 / −2.1% across the ramp.
 
-**Typed interop is cheaper on CPU everywhere measured on the current stack, and
-the advantage grows with cores.** It wins p50 by 9–45% everywhere. On CPU,
-paired on one node, both arms on the same executor:
+**Typed interop is cheaper on CPU where the codec is a large share of the
+message — streaming — and nil where it is not — unary.** It wins p50 by 9–45%
+everywhere. On CPU, paired on one host, both arms on the same executor:
 
-| measurement | executor | interop CPU | interop p50 | pairs |
-|---|---|---|---|---|
-| 1 CPU, chart 0.2.18 | virtual threads | +3–8% | −15 to −45% | 2 |
-| 1 CPU, chart 0.2.21 | virtual threads | −3.3% | −10.3% | 1 |
-| 1 CPU, chart 0.2.21 | `:direct` | −4.1% | −9.3% | 1 |
-| 2 cores, chart 0.2.21 | `:direct` | **−8.6%** | lower | 1 |
-| 2 cores, chart 0.2.22 | `:direct` | **−12.1%** | lower | 1 |
+| measurement | mode | executor | interop CPU | interop p50 | pairs |
+|---|---|---|---|---|---|
+| 1 CPU, chart 0.2.18 | unary | virtual threads | +3–8% | −15 to −45% | 2 |
+| 1 CPU, chart 0.2.21 | unary | virtual threads | −3.3% | −10.3% | 1 |
+| 1 CPU, chart 0.2.21 | unary | `:direct` | −4.1% | −9.3% | 1 |
+| 2 cores, chart 0.2.21 | stream | `:direct` | **−8.6%** | lower | 1 |
+| 2 cores, chart 0.2.22 | stream | `:direct` | **−12.1%** | lower | 1 |
+| x86 1 core, 2026-09-12 | stream, 8 conn | `:direct` | **−22%** at the knee, +23% capacity | lower | 1 |
+| x86 4 cores, 2026-09-12 | stream, 8 conn | `:direct` | −11% at 160k; nil at the (not CPU-bound) plateau | lower | 1 |
+| x86 4 cores, 2026-09-12 | unary, 8 conn | `:direct` | **0 to −4%** (nil) | same | 1 |
 
-At 1 CPU the effect is ~3–4%, at the edge of the ≤4% replicate noise floor —
-real in sign (negative at every step of every pair on the current stack) but not
-reliably in magnitude. At 2 cores it is 9–12%, well outside noise, stable across
-two pairs, every step negative. Both 2-core pairs were host-limited (node above
-4.0 of 4 at the top steps), so they compare the arms at a shared ceiling rather
-than measuring either arm's own.
+This document read the cluster's pairs as "the advantage grows with cores",
+because the 1-CPU pairs were unary and the 2-core pairs were streaming. The
+pinned x86 host, where both modes run at both core counts, separates the two:
+at 4 cores unary is nil (0–4%, the replicate floor) while streaming at 1 core
+is −22% per message and +23% capacity. The variable is the mode. A unary RPC
+is mostly grpc-java's per-call machinery, and the typed write path is a small
+share of it; a streamed message is mostly codec and copies, and the typed path
+is a large share. The 2-core cluster pairs were also host-limited (node above
+4.0 of 4), which is a second reason not to read them as a core-count effect.
 
 The "+3–8% dearer" this document carried for two days was measured on chart
 0.2.18 and does not reproduce on 0.2.21/0.2.22 under either executor. This

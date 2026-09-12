@@ -104,8 +104,9 @@ Two measured levers, honest about their trade:
   threads spread it across the cores it has (2.5× `:direct`'s
   single-connection ceiling at 4 cores); given eight connections `:direct`
   scales too and delivers ~1.7× the virtual-thread throughput at half the
-  CPU per message. So `:direct` is for 1-CPU pods and many-connection
-  clients; virtual threads for a few-connection client on a multi-core pod.
+  CPU per message, and every connection added to a virtual-thread server
+  costs it throughput. So `:direct` is for 1-CPU pods and many-connection
+  clients; virtual threads for a single-connection client on a multi-core pod.
   The case against `:direct` is unchanged and absolute: a handler that
   blocks on a direct executor stalls every connection on that loop. Default
   stays virtual threads — the only safe setting for handlers that may block,
