@@ -274,6 +274,21 @@ fixed per-message costs of which only the first is the codec's to move.
 Once a shape's per-message cost approaches the loop floor, further codec
 work cannot help that shape, however much decode time it still shows.
 
+**And the floor is per message, not per frame.** With the Nighthawk fork
+coalescing 25 client messages per inbound DATA frame
+(`results/2026-09-12-local-client-coalescing/`), the loop drops from 0.96
+to 0.88 of a core — all user time, the kernel share unchanged — and the
+message costs 9% less at the top step, for 3–5 ms of added p50. The
+inbound frame count is ~10–15% of the loop's cost; the rest is the server's
+one-frame-per-response write side, which no client-side setting can reach
+— so this experiment also bounds what a client can do for the server's
+loop at roughly a tenth. Client-side coalescing is a latency-for-CPU trade
+worth ~9% at best, not a recommendation; batching at the message level pays
+the loop once for N on both sides. (Harness note: `--stream-batch-messages`
+is a ceiling; at 40 streams the per-stream arrival rate means the flush
+interval is what sets the achieved batch, which is why it is read from the
+counter.)
+
 **And for virtual threads, connections cost.** Same 4 cores, streaming: one
 connection ~237,000 msg/s at 0.013 ms, two ~203,000 at 0.015, four ~187,000 at
 0.017, eight ~163,000 at 0.020 — monotonic, the mirror image of `:direct`,
