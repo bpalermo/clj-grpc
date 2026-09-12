@@ -1,0 +1,36 @@
+## batch1-1conn at 17:09:02 (fractions of a core: total user sys)
+95.90  68.55 27.35  clj-grpc-epoll-
+63.90  63.20  0.70  ForkJoinPool-1-
+63.85  63.15  0.70  ForkJoinPool-1-
+63.80  63.15  0.65  ForkJoinPool-1-
+63.70  63.10  0.60  ForkJoinPool-1-
+ 1.45   1.35  0.10  VM Thread
+ 0.05   0.05  0.00  C2 CompilerThre
+ 0.05   0.00  0.05  clj-grpc-epoll-
+## batch8-1conn at 17:14:42 (fractions of a core: total user sys)
+93.85  64.20 29.65  clj-grpc-epoll-
+63.85  63.15  0.70  ForkJoinPool-1-
+63.70  63.05  0.65  ForkJoinPool-1-
+63.40  62.75  0.65  ForkJoinPool-1-
+63.30  62.70  0.60  ForkJoinPool-1-
+ 1.40   1.30  0.10  VM Thread
+ 0.55   0.55  0.00  C2 CompilerThre
+ 0.05   0.05  0.00  C1 CompilerThre
+## batch32-1conn at 17:20:22 (fractions of a core: total user sys)
+93.65  66.05 27.60  clj-grpc-epoll-
+63.25  62.45  0.80  ForkJoinPool-1-
+63.05  62.40  0.65  ForkJoinPool-1-
+63.00  62.30  0.70  ForkJoinPool-1-
+62.75  62.05  0.70  ForkJoinPool-1-
+ 1.45   1.35  0.10  VM Thread
+ 0.10   0.10  0.00  C2 CompilerThre
+ 0.05   0.05  0.00  C1 CompilerThre
+## batch32-5ms-1conn at 17:26:07 (fractions of a core: total user sys)
+87.80  61.25 26.55  clj-grpc-epoll-
+59.20  58.70  0.50  ForkJoinPool-1-
+58.75  58.30  0.45  ForkJoinPool-1-
+58.70  58.15  0.55  ForkJoinPool-1-
+58.65  58.05  0.60  ForkJoinPool-1-
+ 1.45   1.35  0.10  VM Thread
+ 0.05   0.05  0.00  Reference Handl
+ 0.05   0.05  0.00  C2 CompilerThre
