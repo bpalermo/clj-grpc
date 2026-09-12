@@ -474,8 +474,7 @@
       "deps": [
         "io_pedestal_pedestal_common",
         "io_pedestal_pedestal_log",
-        "org_clj_commons_pretty",
-        "org_clojure_core_async"
+        "org_clj_commons_pretty"
       ]
     },
     {
@@ -511,8 +510,7 @@
       "deps": [
         "io_pedestal_pedestal_interceptor",
         "io_pedestal_pedestal_log",
-        "org_clj_commons_pretty",
-        "org_clojure_core_async"
+        "org_clj_commons_pretty"
       ]
     },
     {
@@ -530,7 +528,6 @@
         "io_pedestal_pedestal_log",
         "io_pedestal_pedestal_route",
         "io_pedestal_pedestal_telemetry",
-        "org_clojure_core_async",
         "org_clojure_tools_reader",
         "ring_ring_core"
       ]
@@ -549,7 +546,6 @@
         "io_pedestal_pedestal_log",
         "io_pedestal_pedestal_route",
         "io_pedestal_pedestal_telemetry",
-        "org_clojure_core_async",
         "org_clojure_tools_reader",
         "ring_ring_core"
       ]

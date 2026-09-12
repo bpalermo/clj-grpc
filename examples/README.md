@@ -58,10 +58,25 @@ grpcurl -plaintext -d '{"text": "hi"}' localhost:8080 example.echo.Echo/Say
   shape, worked: the blocking unary call, the lazy server-stream seq, the
   client-stream `{:send! :close! :response}` controls, and the bidi observer
   map.
+- [`src/example/echo/async.clj`](src/example/echo/async.clj) — the same service
+  written over core.async channels, and the worked answer to "how would a
+  library integrate?". Forty lines of adapter over the `:bidi` shape, carrying
+  the transport's backpressure to both ends: blocking in `:on-next` is the
+  inbound signal, and outbound the pump parks between `send!`'s return value
+  and `:on-ready`. core.async is a dependency of this example alone, never of
+  the library — which also has to build as a native image. Run it with
+  `bazel run //examples:async`; `//examples:client` talks to it unchanged,
+  because the adapter changes how the handler is written and not what is on
+  the wire.
 - [`test/example/echo/example_e2e_test.clj`](test/example/echo/example_e2e_test.clj) —
   the example server on an ephemeral port, the example client against it,
   every shape asserted. Runs on every `bazel test //...`, so the example
   cannot drift from the library.
+- [`test/example/echo/async_test.clj`](test/example/echo/async_test.clj) — the
+  channel version round-tripped, plus a producer deliberately faster than its
+  consumer, which is the only way the flow-control path runs at all: an echo
+  cannot outrun its client. Asserts that `send!` reported a full transport and
+  that `:on-ready` restarted the pump, so neither can silently stop working.
 
 `//examples/proto:echo_java_proto` puts protoc's Java classes on the classpath
 so the generated namespace resolves its class hints; drop that dep and

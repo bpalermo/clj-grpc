@@ -17,6 +17,11 @@ clj_library(
         "@deps//:io_pedestal_pedestal_service",
         "@deps//:metosin_jsonista",
         "@deps//:org_clojure_clojure",
+        # Pedestal loads core.async. It is listed here rather than arriving
+        # through pedestal's pom because the :async-example alias pins it
+        # top-level, and the lockfile records no edges for a top-level pin —
+        # the same mechanism that makes src/BUILD.bazel name every netty jar.
+        "@deps//:org_clojure_core_async",
     ],
 )
 
@@ -116,6 +121,11 @@ clj_library(
         "@deps//:io_pedestal_pedestal_service",
         "@deps//:metosin_jsonista",
         "@deps//:org_clojure_clojure",
+        # Pedestal loads core.async. It is listed here rather than arriving
+        # through pedestal's pom because the :async-example alias pins it
+        # top-level, and the lockfile records no edges for a top-level pin —
+        # the same mechanism that makes src/BUILD.bazel name every netty jar.
+        "@deps//:org_clojure_core_async",
     ],
 )
 

@@ -17,8 +17,32 @@
                                           :on-complete (fn [])}
                       — call respond! once with the response, usually from
                       :on-complete
-    :bidi             (fn [send! close!]) -> {:on-next ... :on-complete ...}
+    :bidi             (fn [send! close!]) -> {:on-next ... :on-complete ...
+                                              :on-ready ...}
                       — send! per message, close! to finish
+
+  Outbound flow control, for the streaming-out shapes. `send!` returns whether
+  the transport wants more: false means grpc-java is now buffering this call's
+  messages in memory because the client is not reading them fast enough.
+  `.onNext` never blocks and never refuses, so a producer faster than its
+  consumer will otherwise grow that buffer without bound — a channel or queue
+  in front of it bounds the producer, not the wire. Most handlers can ignore
+  the value: a reply per request cannot outrun anything. A handler that
+  generates messages on its own schedule should not.
+
+  To wait rather than poll, a :bidi handler declares :on-ready in the map it
+  returns; grpc calls it when a full call has drained. THE HANDLER'S OWN
+  THREAD MUST NOT WAIT FOR IT. grpc serializes every callback for a call —
+  :on-next, :on-ready, :on-complete — so a thread that is running one of them
+  and blocks for another deadlocks the call. The shape that works is a
+  producer on its own thread (a virtual thread is the cheap way), parked on
+  something :on-ready delivers to; :on-ready itself only hands over the
+  signal. `examples/src/example/echo/async.clj` is that, over core.async.
+
+  :server-streaming has the return value but no :on-ready, and the same rule
+  is why: its handler IS the callback, so nothing could deliver the signal
+  while it waited. A server-streaming handler that must respect backpressure
+  belongs in the :bidi shape.
 
   A thrown exception in any handler becomes Status/INTERNAL with the message
   attached; throw an io.grpc.StatusRuntimeException to control the status.
@@ -112,6 +136,28 @@
         (when on-complete (on-complete))
         (catch Throwable t (fail! response-obs t))))))
 
+(defn- sender
+  "The `send!` a streaming-out handler is given: write the message, and answer
+  whether the transport wants more. False means grpc-java is buffering this
+  call's messages in memory because the client is not reading them fast
+  enough — `.onNext` never blocks and never refuses, so without this a
+  producer that outruns its consumer has no way to know. Always true when the
+  observer is not a ServerCallStreamObserver (grpc's in-process transports)."
+  [^StreamObserver obs]
+  (if (instance? ServerCallStreamObserver obs)
+    (let [^ServerCallStreamObserver sobs obs]
+      (fn send! [msg] (.onNext sobs msg) (.isReady sobs)))
+    (fn send! [msg] (.onNext obs msg) true)))
+
+(defn- with-on-ready
+  "Register a streaming-in handler's :on-ready, if it declared one: grpc calls
+  it when a call that was full has drained. No-op otherwise."
+  [fns ^StreamObserver obs]
+  (when-let [f (:on-ready fns)]
+    (when (instance? ServerCallStreamObserver obs)
+      (.setOnReadyHandler ^ServerCallStreamObserver obs ^Runnable f)))
+  fns)
+
 (defn- with-credits
   "Batch the transport's inbound flow control for a streaming-in handler: ask
   for `credits` messages up front and `credits` more each time that many have
@@ -151,7 +197,7 @@
        (invoke [_ request obs]
          (let [^StreamObserver obs obs]
            (try
-             (handler request (fn send! [msg] (.onNext obs msg)))
+             (handler request (sender obs))
              (.onCompleted obs)
              (catch Throwable t (fail! obs t)))))))
 
@@ -174,10 +220,13 @@
      (reify ServerCalls$BidiStreamingMethod
        (invoke [_ obs]
          (let [^StreamObserver obs obs
-               send!  (fn [msg] (.onNext obs msg))
+               send!  (sender obs)
                close! (fn [] (.onCompleted obs))]
            (try
-             (observer-fns (with-credits (handler send! close!) obs inbound-credits) obs)
+             (observer-fns (-> (handler send! close!)
+                               (with-on-ready obs)
+                               (with-credits obs inbound-credits))
+                           obs)
              (catch Throwable t
                (fail! obs t)
                (observer-fns {} obs)))))))))

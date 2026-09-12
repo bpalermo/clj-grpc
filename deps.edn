@@ -69,6 +69,13 @@
          :main-opts ["-m" "cognitect.test-runner"]
          :exec-fn cognitect.test-runner.api/test
          :exec-args {:patterns ["clj-grpc\\.(e2e|lazy-netty|netty-alignment|service-codec)-test"]}}
+  ;; The core.async example (//examples:async_*), which is a consumer of the
+  ;; public handler shapes and nothing more — core.async is deliberately not a
+  ;; dependency of the library itself, which must also build as a native image.
+  ;; 1.8.741 is the version pedestal already drags into the bench alias; pinned
+  ;; here so the example does not depend on that coincidence.
+  :async-example {:extra-paths ["examples/src"]
+                  :extra-deps {org.clojure/core.async {:mvn/version "1.8.741"}}}
   ;; bazel run //bench:run — gRPC round trips vs REST+JSON on Pedestal/Jetty.
   :bench {:extra-paths ["bench" "test/fixtures"]
           :extra-deps {criterium/criterium {:mvn/version "0.4.6"}
