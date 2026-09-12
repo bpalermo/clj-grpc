@@ -40,6 +40,10 @@
          (System/getenv "UDS") (assoc :address {:unix (System/getenv "UDS")})
          (= "direct" (System/getenv "EXECUTOR")) (assoc :executor :direct)
          (System/getenv "INBOUND_CREDITS")
-         (assoc :inbound-credits (Long/parseLong (System/getenv "INBOUND_CREDITS")))))
+         (assoc :inbound-credits (Long/parseLong (System/getenv "INBOUND_CREDITS")))
+         (System/getenv "WORKER_THREADS")
+         (assoc :worker-threads (Long/parseLong (System/getenv "WORKER_THREADS")))
+         (System/getenv "FLOW_WINDOW")
+         (assoc :initial-flow-control-window (Long/parseLong (System/getenv "FLOW_WINDOW")))))
       server/start
       server/await-termination))
