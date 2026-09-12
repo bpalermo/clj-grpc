@@ -103,9 +103,10 @@ stalls every connection on its loop.
 - The multi-core executor result is x86 and loopback. The cluster cannot
   host it (4-core nodes with ~2.2 cores of headroom); an arm64 host with
   four free cores would say whether the ratios carry.
-- The ladder re-run on chart 0.2.23: `-Xmn256m` alone is +23% unary /
-  +14% streaming on the cluster (measured); `:inbound-credits 8` is not yet
-  measured there. Every figure in the ladder table predates both defaults.
+- ~~The ladder re-run on chart 0.2.23~~ — done 2026-09-12: `:direct` unary
+  ~8,300 / streaming ~16,000; virtual-thread streaming ~13,900 (+76%);
+  interop on virtual threads ~16,000. Every figure in the ladder table
+  predates both defaults and the table itself is the next thing to refresh.
 - ~~Typed interop on an unsaturated multi-core host~~ — done 2026-09-12: the
   advantage tracks the mode (streaming −10–22%, unary nil), not the cores. It
   does not change the ordering above.
@@ -366,8 +367,37 @@ request); streaming ~16,000 msg/s at 0.054 against 14,000 at ~0.062 (+14%,
 −12%, still at the one-connection loop cap); REST HTTP/1.1 ~835 against
 795 (+5%). RSS roughly doubles (175 → 355 MB on the gRPC arm). Chart 0.2.23
 makes it the default on every JVM arm and sets `:inbound-credits 8` on the
-gRPC arms; the ladder table above predates both, and the credits' cluster
-number is the next measurement once that chart is deployed.
+gRPC arms; the ladder table above predates both.
+
+**On chart 0.2.23 itself** (`results/2026-09-12-chart23/`, both defaults
+verified on the pod, 1 CPU): `:direct` unary ~8,300 rps at 0.119 ms (+3% on
+`-Xmn` alone — the credits touch streaming only) and `:direct` streaming
+~16,000 at 0.054, identical to `-Xmn` alone, because under `:direct` the
+one-per-message request already ran on the loop and there was no hop to
+save. **The credits are a virtual-thread lever**: virtual-thread streaming
+reaches a knee of ~13,400 and a plateau of ~13,900 msg/s at 0.069 ms, from
+~7,900 on the last virtual-thread baseline (chart 0.2.8) — +76%, and 0.87×
+`:direct` on one CPU. The typed interop arm on virtual threads reaches
+~16,000 at 0.059 (−14–15% CPU per message at saturation, −4–7% below the
+knee, p50 lower at every step): `:direct`'s compiled plateau, on the safe
+executor.
+
+**Three more options, measured on the pinned x86 host against a clean
+baseline that carries both defaults** (`results/2026-09-12-local-plan-1-3/`):
+`:worker-threads` 1 or 2 instead of Netty's 2 × cores is **+10–12%** for an
+eight-connection virtual-thread server (four loops +6%, one loop as good as
+two) and nil on one connection; `:initial-flow-control-window` is nil on
+one connection at 4 and 16 MiB (the loop thread's share is 97% either way,
+tails improve) but **+17% on eight connections** at 16 MiB with two loops
+(~388,000 against ~332,000, one run — each connection starts with its own
+window, and with eight of them BDP has less traffic per connection to grow
+it from); the scheduler's parallelism at cores minus loops is nil on one
+connection and −11% on eight. With the defaults
+shipped, the per-thread read at the single-connection plateau is the
+connection's event loop at 95–97%, the carriers at 65% and the VM thread at
+1.4%: GC is gone and one connection's loop is the ceiling, and no option in
+this section moves it — only the payload work each message costs (the
+typed path, and the codec's own read path) or a second connection does.
 
 ## Where the CPU goes
 
@@ -404,6 +434,16 @@ a *streamed message at the knee* (~64 µs at 2 cores) the same ~21 µs is about 
 third. Both are true of different quantities. A reader who takes "the field term
 is a minority" as a statement about the codec rather than about a whole unary
 request will underweight it by roughly 5×.
+
+clj-protobuf measured the same pair with no transport in it (their bench,
+main at 411bf49, 2026-09-12, x86): compiled decode 2.72 µs for the
+realistic shape and 9.81 µs for dense — 3.6× for 4× the fields, so **the
+codec's own field term is near-linear in field count** at ~80 ns per leaf
+on x86. The soak's ~0.64–0.71 µs per leaf is the whole request path on the
+CM5 (decode, conversion, encode, copies, at 3–4× the per-instruction
+cost); the codec is a minority of it, which is the same split the per-byte
+term showed. At ~1 KB their harness also puts protobuf ahead of JSON in
+both directions, decode by 2.3–2.8×, where the small shapes had been mixed.
 
 That corrects the advice this document previously gave ("count fields, treat one
 large value as nearly free per byte"), which was inferred from comparing 1,025
@@ -454,6 +494,9 @@ says what you lose by turning one off, not what you gain by adding it.
 | protoc-gen-clojure `interop=true` | p50 −9 to −45%; CPU −10–22% per streamed message, nil (0–4%) per unary request — see below | no, a separate arm |
 | a sized young generation (`-Xmn256m`; the 1 GB-limit default is Serial with ~5 MB) | +25–33% streaming on virtual threads, +70% on `:direct` with eight connections, at 4 cores (x86) | chart default from 0.2.23 (`jvmOptions`); the ladder above predates it |
 | batched inbound credits (clj-grpc `:inbound-credits`) | +27–40% streaming on virtual threads, −23–35% CPU/msg (x86) | chart default 8 from 0.2.23 (`inboundCredits`); the ladder above predates it |
+| `:worker-threads` 1–2 (Netty's default is 2 × cores) | +10–12% streaming for a many-connection virtual-thread server; nil on one connection; leave the default for `:direct` (x86) | no — an option since #99 |
+| `:initial-flow-control-window` 16 MiB | nil on one connection (better tails); +17% on eight connections with two loops, one run (x86) | no — an option since #99 |
+| virtual-thread scheduler parallelism at cores − loops | nil on one connection, −11% on eight (x86) | no |
 
 ### Where the ladder's numbers come from
 
