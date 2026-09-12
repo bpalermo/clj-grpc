@@ -482,10 +482,17 @@ host (`results/2026-09-12-local-typed-slot/`): `:direct` one connection
 7.8 → 7.1 µs per message (−6–9%, +8% capacity), virtual threads one
 connection 9.6 → 9.0 (−4–6%), eight-connection shapes 0–3%. A constant
 ~0.5–0.7 µs saved per message, which is the conversion inside the field
-term; the codec's own bench (no transport) puts its field term at ~80 ns
-per leaf, so this is most of what typing the read path can take on this
-stack. It is the compiled arm's counterpart of `interop=true`'s typed reads
-without generated Java classes.
+term. clj-protobuf's own bench (no transport, same-JVM A/B) puts the
+decode-only saving at 1.45 µs on the realistic shape — 3.28 → 1.83 µs, and
+−37 to −47% across its six field-dense shapes, nil on the three
+collection-dominated ones, with an encode column that changed nothing and
+wandered ±20–30% as that harness's noise floor. The two agree on the shape
+of it: a fixed amount of per-field work removed, a large fraction of a
+decode-only microbenchmark and a small fraction of a whole request. It is
+the compiled arm's counterpart of `interop=true`'s typed reads without
+generated Java classes, and on those bench numbers it already exceeds the
+hand-written parse-into-record prototype (−26% realistic) that was the
+alternative design.
 
 **Streaming's gain over unary is grpc-java shrinking**, 8.4% of samples (0.023
 ms) to 3.8% (0.006 ms): per-RPC setup, headers and trailers amortized over a
