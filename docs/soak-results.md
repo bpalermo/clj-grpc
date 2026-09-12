@@ -493,10 +493,14 @@ because the 1-CPU pairs were unary and the 2-core pairs were streaming. The
 pinned x86 host, where both modes run at both core counts, separates the two:
 at 4 cores unary is nil (0–4%, the replicate floor) while streaming at 1 core
 is −22% per message and +23% capacity. The variable is the mode. A unary RPC
-is mostly grpc-java's per-call machinery, and the typed write path is a small
-share of it; a streamed message is mostly codec and copies, and the typed path
-is a large share. The 2-core cluster pairs were also host-limited (node above
-4.0 of 4), which is a second reason not to read them as a core-count effect.
+is mostly grpc-java's per-call machinery, and the typed conversions are a
+small share of it; a streamed message is mostly codec and copies, and they
+are a large share. (`interop=true` on protoc-gen-clojure ≥ 0.6.0 types both
+directions — the arm's `proto->X` reads through the generated class's getters
+when the class is present — so the figure is the whole typed path's value,
+not a write-side one.) The 2-core cluster pairs were also host-limited (node
+above 4.0 of 4), which is a second reason not to read them as a core-count
+effect.
 
 The "+3–8% dearer" this document carried for two days was measured on chart
 0.2.18 and does not reproduce on 0.2.21/0.2.22 under either executor. This
