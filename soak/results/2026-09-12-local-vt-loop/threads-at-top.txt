@@ -1,0 +1,45 @@
+## reply-full-1conn at 15:17:22 total 2.94 cores
+  85.5% clj-grpc-epoll-
+  52.2% ForkJoinPool-1-
+  52.0% ForkJoinPool-1-
+  51.6% ForkJoinPool-1-
+  50.6% ForkJoinPool-1-
+   1.4% VM Thread
+   0.1% VM Periodic Tas
+   0.1% C2 CompilerThre
+## reply-tiny-1conn at 15:23:02 total 2.75 cores
+  93.5% clj-grpc-epoll-
+  45.2% ForkJoinPool-1-
+  45.1% ForkJoinPool-1-
+  45.1% ForkJoinPool-1-
+  45.0% ForkJoinPool-1-
+   0.8% VM Thread
+   0.1% C2 CompilerThre
+   0.1% C1 CompilerThre
+## reply-none-1conn at 15:28:43 total 0.00 cores
+   0.1% clj-grpc-epoll-
+   0.1% clj-grpc-epoll-
+   0.1% VM Periodic Tas
+   0.1% Monitor Deflati
+   0.0% java
+   0.0% java
+   0.0% idle-timeout-ta
+   0.0% clj-grpc-epoll-
+## pre103-1conn at 15:46:02 total 3.42 cores
+  94.0% clj-grpc-epoll-
+  61.6% ForkJoinPool-1-
+  61.6% ForkJoinPool-1-
+  61.5% ForkJoinPool-1-
+  61.5% ForkJoinPool-1-
+   1.6% VM Thread
+   0.1% C2 CompilerThre
+   0.1% Reference Handl
+## post103-1conn at 15:51:43 total 3.50 cores
+  96.0% clj-grpc-epoll-
+  63.5% ForkJoinPool-1-
+  63.2% ForkJoinPool-1-
+  63.1% ForkJoinPool-1-
+  62.8% ForkJoinPool-1-
+   1.4% VM Thread
+   0.1% C2 CompilerThre
+   0.0% java

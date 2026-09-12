@@ -256,12 +256,34 @@ every core count.** Same streams over eight connections:
 | 2 | ~179,000 at 0.010 ms (1.8 cores) | ~105,000 at 0.018 ms (1.9 cores) | 1.7× |
 | 4 | ~268,000 at 0.010 ms (2.7 cores) | ~163,000 at 0.020 ms (3.3 cores) | 1.6× |
 
+**Where the loop's time goes, measured three ways on the same plateau**
+(`results/2026-09-12-local-vt-loop/`, one connection, ~372,000 msg/s, the
+shipped defaults): the loop runs 0.94 of a core, 0.67 user and 0.27 kernel;
+its Java samples are ~49% write path (HTTP/2 encoder, promises, outbound
+buffer, iov assembly), ~41% buffer refcount and pool bookkeeping, 7% flow
+control and 2% inbound frame decode — grpc-java deframes on the
+application thread, so the loop's read side is the kernel. Shrinking the
+response from 1 KB to one field takes 2 µs off the message but only 0.2 µs
+off the loop. So the loop costs ~2.5 µs per message almost regardless of
+bytes: **the lever is message count, not message size** — a service that
+batches N items into one streamed message pays the loop once for N, and no
+server-side option in this document moves the loop's per-message cost. It
+also bounds codec work: every decode improvement lands on the application
+thread, so the typed read path's ~0.6 µs and the loop's ~2.5 µs are two
+fixed per-message costs of which only the first is the codec's to move.
+Once a shape's per-message cost approaches the loop floor, further codec
+work cannot help that shape, however much decode time it still shows.
+
 **And for virtual threads, connections cost.** Same 4 cores, streaming: one
 connection ~237,000 msg/s at 0.013 ms, two ~203,000 at 0.015, four ~187,000 at
 0.017, eight ~163,000 at 0.020 — monotonic, the mirror image of `:direct`,
 which goes from ~92,000 on one connection to ~268,000 on eight. So the two
 executors want opposite client shapes: virtual threads one connection,
-`:direct` as many as the client can give.
+`:direct` as many as the client can give. With the shipped defaults and two
+loops the loss is gone but not reversed: two connections deliver ~377,000
+against ~358,000 on one (+5%, at the floor) at the same cost per message,
+so one connection is still enough for a virtual-thread server and a second
+no longer hurts.
 
 **Virtual threads' cost per streamed message does not grow with cores** —
 0.015 / 0.015 / 0.013 ms on one connection, 0.018 / 0.018 / 0.020 on eight. That
