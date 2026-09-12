@@ -267,7 +267,12 @@ response from 1 KB to one field takes 2 µs off the message but only 0.2 µs
 off the loop. So the loop costs ~2.5 µs per message almost regardless of
 bytes: **the lever is message count, not message size** — a service that
 batches N items into one streamed message pays the loop once for N, and no
-server-side option in this document moves the loop's per-message cost.
+server-side option in this document moves the loop's per-message cost. It
+also bounds codec work: every decode improvement lands on the application
+thread, so the typed read path's ~0.6 µs and the loop's ~2.5 µs are two
+fixed per-message costs of which only the first is the codec's to move.
+Once a shape's per-message cost approaches the loop floor, further codec
+work cannot help that shape, however much decode time it still shows.
 
 **And for virtual threads, connections cost.** Same 4 cores, streaming: one
 connection ~237,000 msg/s at 0.013 ms, two ~203,000 at 0.015, four ~187,000 at
