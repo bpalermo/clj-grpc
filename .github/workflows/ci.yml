@@ -105,6 +105,64 @@ jobs:
           grep -q 'summarize -> {:message-count 3, :char-count 11}' client.out
           grep -q 'converse -> \["you said: ping" "you said: pong"\]' client.out
 
+  # Both lockfiles, which nothing else checks. A stale lockfile does not fail a
+  # build — it changes what the build resolves, quietly — so neither of these is
+  # caught by `bazel test //...` passing.
+  lockfiles:
+    name: lockfiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-lockfiles
+          repository-cache: true
+          cache-save: ${{ github.ref == 'refs/heads/main' }}
+
+      # Bazel's default lockfile_mode is `update`: it rewrites MODULE.bazel.lock
+      # in place and carries on, so CI regenerates it in memory and passes while
+      # the committed file drifts. --config=strict-lockfile refuses instead. Run
+      # on the .bazelversion pin only — the lockfile format is version-specific,
+      # so the other matrix leg would report a difference that means nothing.
+      - name: MODULE.bazel.lock is up to date
+        run: bazel build --config=strict-lockfile //src:clj_grpc
+
+      # deps.lock.json is what Bazel resolves the classpath from, while the
+      # published pom is generated from deps.edn (clj_maven_export's deps_edn).
+      # So a deps.edn edit without a regenerated lock builds and tests against
+      # the OLD jars and ships a pom naming the new ones — green CI, wrong
+      # release. The netty alignment test catches that one case; this catches
+      # the general one.
+      #
+      # The lock tool's own deps are a dev dependency of rules_clj, so it cannot
+      # run from this repo; clone rules_clj at the version MODULE.bazel pins,
+      # read from MODULE.bazel so this check cannot drift from the module graph.
+      #
+      # --aliases must list every alias whose :extra-deps belong in the lock.
+      # Adding one to deps.edn means adding it here, or this check passes while
+      # the lock is missing its jars.
+      - name: deps.lock.json matches deps.edn
+        run: |
+          set -o pipefail
+          version=$(awk -F'"' '/bazel_dep\(name = "rules_clj"/ { print $4; exit }' MODULE.bazel)
+          echo "rules_clj ${version}, per MODULE.bazel"
+          git clone --depth 1 --branch "v${version}" \
+            https://github.com/bpalermo/rules_clj /tmp/rules_clj
+          (cd /tmp/rules_clj && bazel run //tools/lock -- \
+            --deps-edn="${GITHUB_WORKSPACE}/deps.edn" \
+            --output=/tmp/deps.lock.json \
+            --aliases=bench,async-example)
+          if ! diff -u deps.lock.json /tmp/deps.lock.json; then
+            echo "::error::deps.lock.json does not match deps.edn. Regenerate it:" \
+                 "from a rules_clj ${version} checkout, bazel run //tools/lock --" \
+                 "--deps-edn=<abs>/deps.edn --output=<abs>/deps.lock.json" \
+                 "--aliases=bench,async-example" >&2
+            exit 1
+          fi
+          echo "deps.lock.json is current"
+
   # The single check branch protection requires. A required status check is
   # matched by check-run name, which for a matrix is the generated one; bump a
   # version in the matrix and a directly-required check never reports again,
@@ -114,7 +172,7 @@ jobs:
   # failing.
   ci:
     name: ci
-    needs: [bazel, clj, native]
+    needs: [bazel, clj, native, lockfiles]
     if: always()
     runs-on: ubuntu-latest
     steps:
