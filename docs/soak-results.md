@@ -473,6 +473,38 @@ four times the fields is not four times dearer.
 45.9/s, 7.5 s throttled — which inflates its CPU. Node stayed at 2.2–3.1 of 4
 throughout, so none of this is host-limited.)*
 
+**A typed read path for the compiled arm is worth 4–9% per streamed
+message where the message is cheapest, and little elsewhere.**
+protoc-gen-clojure 0.7.0 reads a compiled message's slots directly by
+declaration index (clj-protobuf 0.3.0's `rt/slot`) instead of through the
+descriptor per field. Measured as a one-variable pair on the pinned x86
+host (`results/2026-09-12-local-typed-slot/`): `:direct` one connection
+7.8 → 7.1 µs per message (−6–9%, +8% capacity), virtual threads one
+connection 9.6 → 9.0 (−4–6%), eight-connection shapes 0–3%. A constant
+~0.5–0.7 µs saved per message, which is the conversion inside the field
+term. clj-protobuf's own bench (no transport, same-JVM A/B) puts the
+decode-only saving at 1.45 µs on the realistic shape — 3.28 → 1.83 µs, and
+−37 to −47% across its six field-dense shapes, nil on the three
+collection-dominated ones, with an encode column that changed nothing and
+wandered ±20–30% as that harness's noise floor. The two agree once the
+denominators are named: a streamed message here is one decode plus one
+encode, and 0.7.0 changes only the decode (the write paths are textually
+identical between the two fixtures), so the per-message saving is about
+half the decode-only saving — 0.72 µs predicted, 0.5–0.7 measured. Nothing
+is lost to the transport; the message simply contains a second operation
+the change does not touch. It is the compiled arm's counterpart of
+`interop=true`'s typed reads without generated Java classes. The
+alternative design — parsing straight into the record and giving up the
+`Message` contract and unknown-field preservation — was measured against
+it three ways in one JVM on clj-protobuf's side: typed −42% / −36% against
+compiled on the realistic and dense shapes, the parse-into-record
+prototype −35% / −19%, so the path that keeps the contract is the faster
+one and the question is closed (the prototype was a naive tag loop, so it
+bounds the idea's floor rather than its ceiling; nobody is scheduling the
+rebuild that would find out). That second run also reproduces the
+field-dense band: −42% / −36% against −44% / −44% in the nine-shape run,
+two harnesses, same band.
+
 **Streaming's gain over unary is grpc-java shrinking**, 8.4% of samples (0.023
 ms) to 3.8% (0.006 ms): per-RPC setup, headers and trailers amortized over a
 stream. What remains is protobuf, syscalls and copies — the message itself.
@@ -495,6 +527,7 @@ says what you lose by turning one off, not what you gain by adding it.
 | a sized young generation (`-Xmn256m`; the 1 GB-limit default is Serial with ~5 MB) | +25–33% streaming on virtual threads, +70% on `:direct` with eight connections, at 4 cores (x86) | chart default from 0.2.23 (`jvmOptions`); the ladder above predates it |
 | batched inbound credits (clj-grpc `:inbound-credits`) | +27–40% streaming on virtual threads, −23–35% CPU/msg (x86) | chart default 8 from 0.2.23 (`inboundCredits`); the ladder above predates it |
 | `:worker-threads` 1–2 (Netty's default is 2 × cores) | +10–12% streaming for a many-connection virtual-thread server; nil on one connection; leave the default for `:direct` (x86) | no — an option since #99 |
+| protoc-gen-clojure 0.7.0's typed-slot read path on the compiled arm | −6–9% CPU per streamed message on `:direct` one connection (+8% capacity), −4–6% on virtual threads one connection, 0–3% on eight-connection shapes (x86) | the fixture in this PR; the ladder above predates it |
 | `:initial-flow-control-window` 16 MiB | nil on one connection (better tails); +17% on eight connections with two loops, one run (x86) | no — an option since #99 |
 | virtual-thread scheduler parallelism at cores − loops | nil on one connection, −11% on eight (x86) | no |
 
