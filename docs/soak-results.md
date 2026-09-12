@@ -103,9 +103,9 @@ stalls every connection on its loop.
 - The multi-core executor result is x86 and loopback. The cluster cannot
   host it (4-core nodes with ~2.2 cores of headroom); an arm64 host with
   four free cores would say whether the ratios carry.
-- `-Xmn` on the chart's JVM arms and batched credits in clj-grpc, on the
-  cluster: both levers were measured on x86 only, and every JVM figure above
-  carries the Serial default young generation.
+- The ladder re-run on chart 0.2.23: `-Xmn256m` alone is +23% unary /
+  +14% streaming on the cluster (measured); `:inbound-credits 8` is not yet
+  measured there. Every figure in the ladder table predates both defaults.
 - ~~Typed interop on an unsaturated multi-core host~~ — done 2026-09-12: the
   advantage tracks the mode (streaming −10–22%, unary nil), not the cores. It
   does not change the ordering above.
@@ -357,11 +357,17 @@ cores**, from 60–65% at the defaults, and the single-connection ceiling
 connection wants virtual threads, many want `:direct` — but the gap between
 them is mostly two defaults, not the executors.
 
-**What this implies for the ladder:** every JVM figure in this document was
-measured with the Serial default young generation, on the cluster as here.
-The 1-CPU arms are less exposed (GC was 5–7% of their profiles) but not
-immune; `-Xmn` on the chart's JVM arms is the next lever to measure there,
-and batched credits would move the streaming rung on both executors.
+**On the cluster it is worth +23% on unary and +14% on streaming.** Every
+JVM figure in this document was measured with the Serial default young
+generation, so `-Xmn256m` was injected on the 1-CPU arms and the ladder's
+ramps re-run (`results/2026-09-12-younggen/`): gRPC unary ~8,050 rps at
+0.120 ms against the median 6,540 at ~0.15 (+23% capacity, −20% CPU per
+request); streaming ~16,000 msg/s at 0.054 against 14,000 at ~0.062 (+14%,
+−12%, still at the one-connection loop cap); REST HTTP/1.1 ~835 against
+795 (+5%). RSS roughly doubles (175 → 355 MB on the gRPC arm). Chart 0.2.23
+makes it the default on every JVM arm and sets `:inbound-credits 8` on the
+gRPC arms; the ladder table above predates both, and the credits' cluster
+number is the next measurement once that chart is deployed.
 
 ## Where the CPU goes
 
