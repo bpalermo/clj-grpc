@@ -118,9 +118,10 @@ Two measured levers, honest about their trade:
   and the one grpc-java intends to keep optimising.
 - **For streaming services, generate with `interop=true`.** protoc-gen-clojure's
   typed fast paths (both directions since 0.6.0) measured +23% capacity and
-  −22% CPU per streamed message at one core on the soak, and nothing
-  measurable on unary, where grpc-java's per-call machinery dominates. It is
-  one attribute plus one dep:
+  −22% CPU per streamed message at one core on the soak. On unary the CPU
+  and capacity effect is nil (0–4%) because grpc-java's per-call machinery
+  dominates, but p50 still improves 9–45% — streaming for capacity, unary
+  for latency. It is one attribute plus one dep:
 
       clojure_proto_library(
           name = "greeter_clj",
