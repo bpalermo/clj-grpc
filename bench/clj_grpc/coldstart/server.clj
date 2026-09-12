@@ -38,6 +38,8 @@
                                                                  (some? payload) (assoc :payload payload))))))
                                           :on-complete close!})}}]}
          (System/getenv "UDS") (assoc :address {:unix (System/getenv "UDS")})
-         (= "direct" (System/getenv "EXECUTOR")) (assoc :executor :direct)))
+         (= "direct" (System/getenv "EXECUTOR")) (assoc :executor :direct)
+         (System/getenv "INBOUND_CREDITS")
+         (assoc :inbound-credits (Long/parseLong (System/getenv "INBOUND_CREDITS")))))
       server/start
       server/await-termination))

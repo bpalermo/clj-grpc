@@ -43,14 +43,16 @@ spec:
       containers:
         - name: server
           image: "{{ $arm.image }}"
-          {{- /* JAVA_TOOL_OPTIONS has three possible contributors and
+          {{- /* JAVA_TOOL_OPTIONS has four possible contributors and
                Kubernetes keeps only the last entry of a duplicated name, so
                they are composed into one value here:
 
                  1. the arm's own extraEnv value, if it sets the variable
                     (an A/B's JVM flags, via ladder.sh's LADDER_EXTRA_SET)
-                 2. runtime direct linking, on the JVM arms
-                 3. Pyroscope's agent, when this arm is profiled and
+                 2. .Values.jvmOptions, on the JVM arms (the sized young
+                    generation by default)
+                 3. runtime direct linking, on the JVM arms
+                 4. Pyroscope's agent, when this arm is profiled and
                     profiling is on
 
                The agent is attached rather than merely enabled because
@@ -66,6 +68,7 @@ spec:
           {{- end }}
           {{- $jto := list }}
           {{- if $extraJto }}{{ $jto = append $jto $extraJto }}{{ end }}
+          {{- if and $arm.jvm $.Values.jvmOptions }}{{ $jto = append $jto $.Values.jvmOptions }}{{ end }}
           {{- if $linking }}{{ $jto = append $jto "-Dclojure.compiler.direct-linking=true" }}{{ end }}
           {{- if $agent }}{{ $jto = append $jto "-javaagent:/pyroscope.jar" }}{{ end }}
           env:
@@ -80,6 +83,10 @@ spec:
             {{- if $jto }}
             - name: JAVA_TOOL_OPTIONS
               value: {{ join " " $jto | quote }}
+            {{- end }}
+            {{- if and $arm.jvm (eq $arm.probe "grpc") $.Values.inboundCredits (not (hasKey ($arm.extraEnv | default dict) "INBOUND_CREDITS")) }}
+            - name: INBOUND_CREDITS
+              value: {{ $.Values.inboundCredits | quote }}
             {{- end }}
             {{- if $agent }}
             # The application name is suffixed so these series never merge
