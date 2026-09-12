@@ -14,3 +14,16 @@ test --verbose_failures
 # Stamped image tags (//bazel/images) need a git commit; Bazel provides none
 # by default. The script never fails, so this cannot break a build.
 build --workspace_status_command=bazel/tools/workspace_status.sh
+
+# MODULE.bazel.lock must be committed current. Bazel's default lockfile_mode is
+# `update`, which rewrites the file in place and carries on, so a stale lockfile
+# is invisible locally and CI regenerates it in memory and passes — the
+# committed file drifts and nobody finds out until a build resolves something
+# else. --lockfile_mode=error refuses instead of rewriting.
+#
+#   bazel build --config=strict-lockfile //src:clj_grpc
+#
+# Only meaningful on the version .bazelversion pins: the lockfile's format is
+# Bazel-version-specific, and the other leg of the CI matrix would report a
+# difference that says nothing about this repo.
+common:strict-lockfile --lockfile_mode=error
