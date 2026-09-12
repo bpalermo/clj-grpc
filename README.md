@@ -116,6 +116,27 @@ Two measured levers, honest about their trade:
   blocks on a direct executor stalls every connection on that loop. Default
   stays virtual threads — the only safe setting for handlers that may block,
   and the one grpc-java intends to keep optimising.
+- **For streaming services, generate with `interop=true`.** protoc-gen-clojure's
+  typed fast paths (both directions since 0.6.0) measured +23% capacity and
+  −22% CPU per streamed message at one core on the soak, and nothing
+  measurable on unary, where grpc-java's per-call machinery dominates. It is
+  one attribute plus one dep:
+
+      clojure_proto_library(
+          name = "greeter_clj",
+          proto = "//proto:greeter_proto",
+          options = {"interop": "true"},
+          outs = ["acme/greeter/greeter.clj"],
+      )
+      clj_library(
+          name = "greeter",
+          srcs = [":greeter_clj"],
+          deps = ["//proto:greeter_java_proto", ...],  # the generated ns loads protoc's classes
+      )
+
+  The generated namespace requires protoc's Java classes on the classpath at
+  load, so a native image needs their reflection config; the descriptor arm
+  stays the default for that reason.
 - **Streaming beats tuning by two orders of magnitude.** Every unary call
   costs ~190–275 µs of machinery; serializing an entire 20-row message costs
   ~7 µs. If a workload makes N small calls where one stream would do, no
