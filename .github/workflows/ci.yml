@@ -105,6 +105,34 @@ jobs:
           grep -q 'summarize -> {:message-count 3, :char-count 11}' client.out
           grep -q 'converse -> \["you said: ping" "you said: pong"\]' client.out
 
+      # A shutdown hook the native image did not run would look, from the
+      # outside, exactly like a killed server — so this watches the health
+      # service through the drain. The transition to NOT_SERVING while the
+      # watch is still open can only come from the hook flipping it before the
+      # listener closes; a killed process ends the stream instead.
+      - name: SIGTERM drains the native server instead of cutting it
+        run: |
+          set -o pipefail
+          PORT=18081 ./bazel-bin/examples/echo-server &
+          for i in $(seq 1 50); do
+            ss -ltn | grep -q 18081 && break
+            sleep 0.2
+          done
+          bazel run //examples:probe -- localhost:18081 > probe.out 2>&1 &
+          for i in $(seq 1 100); do
+            grep -q 'health -> SERVING' probe.out && break
+            sleep 0.2
+          done
+          grep -q 'health -> SERVING' probe.out
+          kill -TERM %1
+          wait %2
+          wait %1 || status=$?
+          cat probe.out
+          grep -q 'health -> NOT_SERVING' probe.out
+          # 143 is SIGTERM's exit status whether or not hooks ran; the
+          # NOT_SERVING line above is what proves they did.
+          [ "${status:-0}" = "143" ] || { echo "server exit ${status:-0}, expected 143" >&2; exit 1; }
+
   # Both lockfiles, which nothing else checks. A stale lockfile does not fail a
   # build — it changes what the build resolves, quietly — so neither of these is
   # caught by `bazel test //...` passing.

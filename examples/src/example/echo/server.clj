@@ -71,5 +71,10 @@
 
 (defn -main [& _]
   (let [srv (start nil)]
+    ;; SIGTERM drains instead of cutting: health NOT_SERVING at once, the
+    ;; listener closed after the drain delay, in-flight calls given the
+    ;; grace. The server is the only thing here that needs draining, which
+    ;; is the case the preset is for — see its docstring for the other one.
+    (knative/shutdown-hook! srv)
     (println (str "echo server listening on port " (server/port srv)))
     (server/await-termination srv)))

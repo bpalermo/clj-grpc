@@ -27,6 +27,7 @@ clj_library(
     namespaces = [
         "example.echo.server",
         "example.echo.client",
+        "example.echo.probe",
     ],
     strip_prefix = "examples/src",
     deps = [
@@ -58,6 +59,15 @@ clj_binary(
     deps = [":echo_lib"],
 )
 
+# bazel run //examples:probe [-- host:port] — watch the health service until
+# it reports NOT_SERVING. What a rollout sees of a graceful shutdown.
+clj_binary(
+    name = "probe",
+    main = "example.echo.probe",
+    tags = ["manual"],
+    deps = [":echo_lib"],
+)
+
 # ---------------------------------------------------------------------------
 # Native image: the same server as a GraalVM binary.
 #
@@ -70,7 +80,10 @@ clj_library(
     name = "echo_embedded_lib",
     srcs = glob(
         ["src/**/*.clj"],
-        exclude = ["src/example/echo/async.clj"],
+        exclude = [
+            "src/example/echo/async.clj",
+            "src/example/echo/probe.clj",
+        ],
     ),
     namespaces = [
         "example.echo.server",

@@ -71,7 +71,11 @@ Both directions, epoll only (validated eagerly):
 `clj-grpc.knative` holds the presets: server on `$PORT` speaking h2c with
 health + reflection on (name the container port `h2c` in the Service spec),
 client with wait-for-ready and keepalives for the activator-in-path,
-scale-from-zero posture. See the namespace docstring for the deployment notes.
+scale-from-zero posture, and `shutdown-hook!` to drain on SIGTERM in the order a
+rollout expects — with the budget arithmetic against
+`terminationGracePeriodSeconds` in its docstring, and the one rule that keeps
+it safe: use it when the server is the only thing that needs draining. See the
+namespace docstring for the deployment notes.
 
 ## Non-shaded Netty, deliberately
 
