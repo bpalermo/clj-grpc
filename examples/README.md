@@ -95,9 +95,10 @@ PORT=8080 ./bazel-bin/examples/echo-server
 ```
 
 First RPC in tens of milliseconds instead of seconds — the numbers are in the
-top-level README's cold-start table. The client (JVM or another native image)
-speaks to it unchanged; CI's `native image` job builds this binary and
-round-trips `//examples:client` against it on every change.
+cold-start table in [`../docs/performance.md`](../docs/performance.md). The
+client (JVM or another native image) speaks to it unchanged; CI's
+`native image` job builds this binary and round-trips `//examples:client`
+against it on every change.
 
 Two things make the image work, both worth copying into your own service.
 The binary is built from `:echo_embedded_lib` — the embedded-descriptor arm,

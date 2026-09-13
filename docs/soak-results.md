@@ -56,7 +56,8 @@ Under overload it behaves like h2c, not like the JVM: p50 climbs to 1.7–2.5 s
 and `/metrics` stops answering.
 
 **That reverses the loopback picture, and the reason is the payload.** The
-loopback comparison in the README — a wash at 1–2 cores, native cheaper per
+loopback comparison in [`performance.md`](performance.md) — a wash at 1–2
+cores, native cheaper per
 call — was an 8-byte echo over a Unix socket on x86, a shape where per-message
 framing is the whole cost. The cluster runs 1 KB bodies over TCP on arm64, where
 two thirds of the gRPC arm's CPU is payload handling, and that is the work the
