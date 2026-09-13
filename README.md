@@ -47,6 +47,31 @@ protobuf Messages; the generated `proto->X`/`X->proto` fns are the edges.
     :message)
 ```
 
+## Interceptors
+
+Functions of the call, on both sides; handlers read the call with no
+signature change:
+
+```clojure
+(require '[clj-grpc.interceptor :refer [reject]]
+         '[clj-grpc.context :as context]
+         '[clj-grpc.metadata :as metadata])
+
+(defn require-token [call next]
+  (if (= "Bearer secret" (metadata/header (:headers call) "authorization"))
+    (next (assoc call :user "alice"))
+    (reject :unauthenticated "no token" {"www-authenticate" "Bearer"})))
+
+(server/server {:services [...] :interceptors [require-token]})   ; [a b c]: a outermost
+(fn [req] (str "hello " (:user (context/call)) " from " (context/peer)))   ; a handler
+
+(client/invoke ch method req {:headers {"authorization" "Bearer secret"}})
+```
+
+Raw `io.grpc` interceptors mix into the same vector. The call map, rejection,
+response headers and trailers, and the client side are in
+`clj-grpc.interceptor`'s docstring; `docs/design.md` has the why.
+
 ## Examples
 
 [`examples/`](examples/) is the full path, runnable: a `.proto` with one

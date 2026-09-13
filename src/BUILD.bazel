@@ -6,8 +6,12 @@ clj_library(
     name = "clj_grpc",
     srcs = glob(["clj_grpc/**/*.clj"]),
     namespaces = [
+        "clj-grpc.names",
         "clj-grpc.service",
         "clj-grpc.transport",
+        "clj-grpc.metadata",
+        "clj-grpc.context",
+        "clj-grpc.interceptor",
         "clj-grpc.impl.netty",
         "clj-grpc.server",
         "clj-grpc.health",

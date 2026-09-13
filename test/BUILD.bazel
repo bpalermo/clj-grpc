@@ -85,6 +85,24 @@ clj_test(
     deps = [":e2e_test_lib"],
 )
 
+clj_library(
+    name = "interceptor_test_lib",
+    srcs = ["clj_grpc/interceptor_test.clj"],
+    namespaces = ["clj-grpc.interceptor-test"],
+    strip_prefix = "test",
+    deps = TEST_DEPS,
+)
+
+# Interceptors on both sides over real Netty: the call map, rejection,
+# ordering with raw grpc interceptors mixed in, response metadata, per-call
+# scope, and the thread-local caveat.
+clj_test(
+    name = "interceptor_test",
+    size = "medium",
+    ns = "clj-grpc.interceptor-test",
+    deps = [":interceptor_test_lib"],
+)
+
 # The non-hinted arm: TEST_DEPS without protoc's Java classes, so the fixture's
 # class hints resolve to nothing and every prototype — the namespace's and the
 # service's — comes from clj-protobuf's runtime fallback. Two positions of the

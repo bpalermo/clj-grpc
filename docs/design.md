@@ -142,6 +142,55 @@ seq); streaming-in shapes return `{:send! :close! :error!}` controls plus a
 promise (client-streaming) or deliver into the caller's observer map (bidi).
 Deadlines and wait-for-ready ride per-call opts.
 
+## Interceptors
+
+An interceptor is a function of the call: `(fn [call next] ...)`, the same
+word on both sides. It receives a map describing the call — method key,
+headers, peer, authority, deadline, the grpc objects underneath — and either
+hands off with `(next call')`, possibly enriched, or on the server returns
+`(reject status description trailers)`. Underneath, each fn becomes one
+`io.grpc.ServerInterceptor` or `ClientInterceptor` — grpc's own extension
+point, wrapped rather than reinvented, the same way health and reflection are
+grpc-services instances. Raw grpc interceptors go in the same `:interceptors`
+vector and run in the same order.
+
+Handlers read the call through `clj-grpc.context` with no signature change,
+because grpc already attaches a per-call `io.grpc.Context` around every
+listener callback — on the virtual-thread executor and on `:direct` alike —
+and `Contexts/interceptCall` lets the adapter hang the enriched map on it. The
+map exists whenever at least one Clojure interceptor is in the chain; with
+none, nothing is built and nothing is registered, so an empty vector costs
+what it did before there were interceptors: nothing. The context is a
+ThreadLocal: a thread the handler starts itself must be wrapped with
+`(.wrap (Context/current) f)` to see it, which the docstring and a test say.
+
+Two rules made explicit because grpc's own are surprising. Order: `[a b c]`
+runs `a` outermost on every path — the builders run the last-registered
+interceptor outermost, so registration reverses the vector, while per-call
+client interceptors use `interceptForward`, which does not. Rejection is a
+value, not an exception: the auth-failure path is the common one and should
+not pay for a stack trace; throwing still works as it does in handlers.
+
+Response headers and trailers are two keys on the map given to `next`,
+merged into what the handler's response carries. Client-side headers are
+*declared* in the map and written when the call starts, because grpc creates
+the outgoing Metadata after interceptors run; that is also why an inner
+interceptor can see what an outer one declared, and why headers a raw
+interceptor adds at start are invisible to Clojure ones.
+
+The wrappers this needs — a no-op listener, forwarding calls and listeners —
+are abstract classes in grpc-api with no public concrete subclass, so they
+are `proxy` classes. Clojure 1.12's `proxy` expands to a direct `new` of a
+class AOT writes to disk, with no `Class.forName`, so the native image needs
+no reflection entries for them; the example server wires one interceptor by
+default precisely so the CI native job proves that on every change.
+
+Deliberately not sugared: hooks per message (that is the handler's shape),
+registration per method (`ServerInterceptors/intercept` on a service
+definition is one call away), and trailers set from inside a handler — the
+error path carries them already, via a `StatusRuntimeException` built with
+trailers.
+
 ## Knative
 
 `clj-grpc.knative` is presets, not machinery: the server preset is h2c on
@@ -231,3 +280,6 @@ disagreeing with `version.edn`.
   a consumer who wants grpc-netty-shaded wants a different library.
 - **grpc-web, xDS, retries-as-policy.** Grow on demand, behind the same
   alignment discipline.
+- **Built-in interceptors.** The mechanism ships; logging, auth and metrics
+  are eight lines each and belong to the application (the examples carry
+  one of each shape).

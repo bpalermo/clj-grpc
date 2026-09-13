@@ -28,6 +28,7 @@ clj_library(
         "example.echo.server",
         "example.echo.client",
         "example.echo.probe",
+        "example.echo.interceptors",
     ],
     strip_prefix = "examples/src",
     deps = [
@@ -88,6 +89,7 @@ clj_library(
     namespaces = [
         "example.echo.server",
         "example.echo.client",
+        "example.echo.interceptors",
     ],
     strip_prefix = "examples/src",
     deps = [
@@ -176,10 +178,35 @@ clj_test(
 )
 
 clj_library(
+    name = "interceptors_test_lib",
+    srcs = ["test/example/echo/interceptors_test.clj"],
+    namespaces = ["example.echo.interceptors-test"],
+    strip_prefix = "examples/test",
+    deps = [
+        ":echo_gen",
+        ":echo_lib",
+        "//src:clj_grpc",
+        "@deps//:io_grpc_grpc_api",
+        "@deps//:org_clojure_clojure",
+    ],
+)
+
+# The interceptor example round-tripped: the bearer token accepted, its
+# absence rejected, the stamped response header captured on the client.
+clj_test(
+    name = "interceptors_test",
+    ns = "example.echo.interceptors-test",
+    deps = [":interceptors_test_lib"],
+)
+
+clj_library(
     name = "example_e2e_test_lib",
     srcs = glob(
         ["test/**/*.clj"],
-        exclude = ["test/example/echo/async_test.clj"],
+        exclude = [
+            "test/example/echo/async_test.clj",
+            "test/example/echo/interceptors_test.clj",
+        ],
     ),
     namespaces = ["example.echo.example-e2e-test"],
     strip_prefix = "examples/test",

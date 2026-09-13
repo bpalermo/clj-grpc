@@ -22,8 +22,8 @@
   that message: the generated class, its compiled codec, or DynamicMessage
   under -Dclj-protobuf.codec=dynamic. One rule, in one place, on both sides
   of the wire; being wrong costs the optimisation, never correctness."
-  (:require [clj-protobuf.runtime :as rt]
-            [clojure.string :as string])
+  (:require [clj-grpc.names :as names]
+            [clj-protobuf.runtime :as rt])
   (:import [com.google.protobuf
             Descriptors$FileDescriptor
             Descriptors$MethodDescriptor
@@ -51,13 +51,6 @@
 
 ;; ---------------------------------------------------------------------------
 ;; The service value
-
-(defn- kebab [s]
-  (keyword
-   (-> s
-       (string/replace #"([a-z0-9])([A-Z])" "$1-$2")
-       (string/replace "_" "-")
-       (string/lower-case))))
 
 (defrecord Method
            [name              ; "SayHello", the proto name
@@ -95,7 +88,7 @@
         type (method-type md)]
     (->Method
      (.getName md)
-     (kebab (.getName md))
+     (names/kebab (.getName md))
      type
      in
      out
