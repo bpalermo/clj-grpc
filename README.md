@@ -75,7 +75,10 @@ scale-from-zero posture, and `shutdown-hook!` to drain on SIGTERM in the order a
 rollout expects — with the budget arithmetic against
 `terminationGracePeriodSeconds` in its docstring, and the one rule that keeps
 it safe: use it when the server is the only thing that needs draining. See the
-namespace docstring for the deployment notes.
+namespace docstring for the deployment notes, and
+[`docs/kubernetes.md`](docs/kubernetes.md) for probes — readiness on the status
+the app declares, liveness on a name it never flips, and why using one signal
+for both is a restart storm.
 
 ## Non-shaded Netty, deliberately
 
