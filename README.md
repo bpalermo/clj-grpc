@@ -68,9 +68,10 @@ signature change:
 (client/invoke ch method req {:headers {"authorization" "Bearer secret"}})
 ```
 
-Raw `io.grpc` interceptors mix into the same vector. The call map, rejection,
-response headers and trailers, and the client side are in
-`clj-grpc.interceptor`'s docstring; `docs/design.md` has the why.
+Raw `io.grpc` interceptors mix into the same vector. The guide is
+[`docs/interceptors.md`](docs/interceptors.md) — the call map, rejection,
+response headers and trailers, reading the call from a handler, the client
+side, and six tested recipes; `docs/design.md` has the why.
 
 ## Examples
 

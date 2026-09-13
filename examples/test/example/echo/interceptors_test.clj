@@ -38,3 +38,65 @@
         (client/shutdown with-token {:grace-ms 2000})
         (client/shutdown without {:grace-ms 2000})
         (server/shutdown srv {:grace-ms 2000})))))
+
+(deftest a-handler-reads-the-call-and-a-client-times-it
+  (let [say-whoami (fn [_]
+                     (let [{:keys [user peer]} (interceptors/whoami)]
+                       (echo/EchoReply->proto {:text (str user "@" peer)})))
+        srv (echo-server/start {:address 0
+                                :services [{:service echo/Echo
+                                            :handlers (assoc echo-server/handlers :say say-whoami)}]
+                                :interceptors [interceptors/request-log
+                                               (interceptors/require-token "secret")]})
+        timings (atom [])
+        ch  (client/channel (str "localhost:" (server/port srv))
+                            {:plaintext true
+                             :interceptors [(interceptors/bearer "secret")
+                                            (interceptors/timing #(swap! timings conj %))]})]
+    (try
+      (testing "the handler sees the user the interceptor attached, and the peer"
+        (let [calls (client/client ch echo/echo-methods {:deadline-ms 10000})]
+          (is (re-matches #"token-holder@/127\.0\.0\.1:\d+" (echo-client/say calls "x")))))
+      (testing "timing saw every shape close OK, with a wall time"
+        (echo-client/call-all ch)
+        (let [by-method (into {} (map (juxt :method identity)) @timings)]
+          (is (= #{:say :repeat :summarize :converse} (set (keys by-method))))
+          (is (every? #(= "OK" (:status %)) @timings))
+          (is (every? #(<= 0 (:ms %)) @timings))))
+      (finally
+        (client/shutdown ch {:grace-ms 2000})
+        (server/shutdown srv {:grace-ms 2000})))))
+
+(deftest a-header-propagates-through-a-handler-to-the-next-service
+  (let [seen-downstream (atom nil)
+        ;; B: records the request id it was handed
+        b   (echo-server/start {:address 0
+                                :interceptors [(fn [call next]
+                                                 (reset! seen-downstream
+                                                         (metadata/header (:headers call) "x-request-id"))
+                                                 (next call))]})
+        to-b (client/channel (str "localhost:" (server/port b))
+                             {:plaintext true :interceptors [(interceptors/propagate "x-request-id")]})
+        ;; A: its Say handler calls B's Say, from the callback thread
+        b-calls (client/client to-b echo/echo-methods {:deadline-ms 10000})
+        a   (echo-server/start {:address 0
+                                :services [{:service echo/Echo
+                                            :handlers (assoc echo-server/handlers
+                                                             :say (fn [_] (echo/EchoReply->proto
+                                                                           {:text (echo-client/say b-calls "via-a")})))}]})
+        to-a (client/channel (str "localhost:" (server/port a)) {:plaintext true})]
+    (try
+      (let [calls (client/client to-a echo/echo-methods {:deadline-ms 10000
+                                                         :headers {"x-request-id" "req-42"}})]
+        (is (= "echo: via-a" (echo-client/say calls "x")))
+        (is (= "req-42" @seen-downstream)
+            "the id sent to A reached B, forwarded from inside A's handler"))
+      (testing "and from outside any call the same channel declares nothing"
+        (reset! seen-downstream :untouched)
+        (echo-client/say b-calls "direct")
+        (is (nil? @seen-downstream)))
+      (finally
+        (client/shutdown to-a {:grace-ms 2000})
+        (client/shutdown to-b {:grace-ms 2000})
+        (server/shutdown a {:grace-ms 2000})
+        (server/shutdown b {:grace-ms 2000})))))
