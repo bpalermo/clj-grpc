@@ -86,204 +86,48 @@ pin block, run the test.
 TLS: h2c needs none. For TLS, JDK SSL works out of the box via `:tls`;
 `netty-tcnative-boringssl-static 2.0.81.Final` is the optional OpenSSL add-on.
 
-## Performance posture
+## Native image
 
-Two measured levers, honest about their trade:
+The library is native-image ready, and CI round-trips a JVM client against a
+GraalVM binary on every run. The contract that makes it work: every
+Netty-touching construction lives in one leaf namespace (`clj-grpc.impl.netty`)
+that the API namespaces load through `requiring-resolve` at first construction,
+so under `--initialize-at-build-time` nothing Netty-marked initializes during
+image build. The jar ships the `META-INF/native-image` config that goes with
+that — run-time-init for the leaf, `io.grpc.netty` and `io.netty.handler.ssl`,
+plus the reflection entries the runtime require needs — and `native-image`
+discovers it automatically. `lazy_netty_test` fails the build if a Netty
+reference ever escapes the leaf.
 
-- **`:executor :direct`** runs handlers on the Netty event loop, and what it
-  buys depends on how many cores the process has. On loopback, with cores to
-  spare: **−29% unary latency** (265 → 187 µs) and ~9% *less* throughput than
-  the virtual-thread default at 32-way concurrency (21,133 vs 23,060 calls/s;
-  `bazel run //bench:run -- load` reproduces both). On a 1-CPU pod, where one
-  event loop is the whole machine, that inversion disappears: the on-cluster
-  ladder measures `:direct` ahead on every axis — 15–27% less CPU per unary
-  request, ~25% more streaming capacity, p50 roughly half at every matched
-  rate ([docs/soak-results.md](docs/soak-results.md)). On a multi-core pod
-  the answer is the client's connection count: one connection under
-  `:direct` is one event loop and one core at any core count, while virtual
-  threads spread it across the cores it has (2.5× `:direct`'s
-  single-connection ceiling at 4 cores); given eight connections `:direct`
-  scales too and delivers ~1.7× the virtual-thread throughput at half the
-  CPU per message, and every connection added to a virtual-thread server
-  costs it throughput. So `:direct` is for 1-CPU pods and many-connection
-  clients; virtual threads for a single-connection client on a multi-core pod.
-  A virtual-thread server with many connections also wants `:worker-threads`
-  1–2 rather than Netty's 2 × cores (+10–12% streamed messages per second on
-  4 cores); the loops only do I/O there and compete with the carriers.
-  Two defaults cap both: under a 1 GB container limit the JVM runs Serial
-  GC with a ~5 MB young generation, and grpc-java re-requests one credit per
-  streamed message. `-Xmn256m` is worth +25–70% streaming on 4 cores;
-  batching the credits +27–40% on virtual threads at −23–35% CPU per message
-  (`:inbound-credits n` on the server; the soak chart sets both by default).
-  The case against `:direct` is unchanged and absolute: a handler that
-  blocks on a direct executor stalls every connection on that loop. Default
-  stays virtual threads — the only safe setting for handlers that may block,
-  and the one grpc-java intends to keep optimising.
-- **For streaming services, generate with `interop=true`.** protoc-gen-clojure's
-  typed fast paths (both directions since 0.6.0) measured +23% capacity and
-  −22% CPU per streamed message at one core on the soak. On unary the CPU
-  and capacity effect is nil (0–4%) because grpc-java's per-call machinery
-  dominates, but p50 still improves 9–45% — streaming for capacity, unary
-  for latency. It is one attribute plus one dep:
+Two consumer caveats: every namespace in the image must be AOT-compiled, since
+a native image has no Clojure compiler; and generated code should run the
+embedded-descriptor arm, because the class-hinted arm leans on protobuf-java
+reflection that would need extra registration.
 
-      clojure_proto_library(
-          name = "greeter_clj",
-          proto = "//proto:greeter_proto",
-          options = {"interop": "true"},
-          outs = ["acme/greeter/greeter.clj"],
-      )
-      clj_library(
-          name = "greeter",
-          srcs = [":greeter_clj"],
-          deps = ["//proto:greeter_java_proto", ...],  # the generated ns loads protoc's classes
-      )
+`bazel build //examples:echo_native` builds the example server as a binary.
 
-  The generated namespace requires protoc's Java classes on the classpath at
-  load, so a native image needs their reflection config; the descriptor arm
-  stays the default for that reason.
-- **Streaming beats tuning by two orders of magnitude.** Every unary call
-  costs ~190–275 µs of machinery; serializing an entire 20-row message costs
-  ~7 µs. If a workload makes N small calls where one stream would do, no
-  executor choice compares to fixing that.
+## Performance
 
-## Cold start
+Choices, with the measurements behind them in
+[`docs/performance.md`](docs/performance.md):
 
-Time-to-first-RPC for a cold server process — the number Knative
-scale-from-zero pays. Measured with `//bench:coldstart` (spawn to first
-successful call, warm prober, fresh channel per probe, median of 5) — measured
-2026-08-29 on clj-protobuf 0.1.6, before the compiled codec:
-
-| arm | median | range |
-|---|---|---|
-| plain deploy jar | 1750 ms | 1725–1848 ms |
-| AppCDS (archive trained through a served RPC) | 1707 ms | 1678–1798 ms |
-| **GraalVM native-image** | **79 ms** | 71–420 ms |
-
-Two corrections over the previously published table. First, the old prober
-reused one channel, so gRPC's reconnect backoff quantized every reading; a
-fresh channel per probe removes up to a full backoff period of inflation from
-the JVM arms — and reveals that AppCDS, honestly measured, buys about 2%
-here: this workload's startup is dominated by executing Clojure's class
-initializers, which CDS cannot skip, not by parsing class files, which it
-can. The earlier −57% CDS claim was the probe grid amplifying a small
-difference and is withdrawn.
-
-Second, the native-image arm now **works** — 22× over the JVM, and it serves
-over Unix domain sockets through the embedded epoll JNI transport. Every
-Netty-touching construction lives in one leaf namespace
-(`clj-grpc.impl.netty`) that the API namespaces load via `requiring-resolve`
-at first construction, so under `--initialize-at-build-time` nothing
-Netty-marked initializes during image build; the jar ships the
-`META-INF/native-image` config (run-time-init for the leaf, `io.grpc.netty`,
-and `io.netty.handler.ssl`, plus the reflection entries the runtime require
-needs), which `native-image` discovers automatically. Build the sample with
-`bazel build //bench:coldstart_native`. Two consumer caveats: every namespace
-in the image must be AOT-compiled (a native image has no Clojure compiler),
-and generated code should run the embedded-descriptor arm — the class-hinted
-arm leans on protobuf-java reflection that a native image needs extra
-registration for.
-
-The other side of that trade is steady state. `//bench:steady` spawns the
-same two servers and measures the ten-thousandth RPC instead of the first —
-20k-call warmup, then sequential unary latency and 32-way virtual-thread
-throughput, same warm JVM client for both arms — also 2026-08-29 on
-clj-protobuf 0.1.6:
-
-| arm | unary p50 | p90 | p99 | 32-way throughput |
-|---|---|---|---|---|
-| JVM (warmed) | 247 µs | 302 µs | 431 µs | ~29,000 calls/s |
-| native image | 315 µs | 398 µs | 527 µs | ~18,000 calls/s |
-
-Once the JIT is warm the JVM serves ~25% lower latency and ~55% more
-throughput; the native image runs whatever the image builder froze, on Serial
-GC. So the choice is the workload's: scale-from-zero and short-lived
-processes want the 79 ms start; hot, always-on services want the JIT. Both
-numbers are honest and neither invalidates the other. The native arm is also
-~2.1× smaller — 182 MB RSS against the JVM's 381 MB after the same load.
-
-What moves the native number and what does not, measured: `-O3` and
-`-march=native` change nothing (the hot path is I/O and dispatch, not
-compute); sizing the Serial GC at run time — `-Xmx1g -Xmn512m` as arguments
-to the binary — buys ~13% throughput for free. The levers that could close
-the rest of the gap, PGO and the G1 collector, need Oracle GraalVM — and
-images built with Oracle GraalVM 21.0.12 or 25.0.4 currently fail every RPC
-(`CANCELLED: Failed to read message`, isolated to the toolchain version, not
-to those features; CE 21.0.2 works), so they stay unmeasured until that is
-diagnosed.
-
-The throughput gap is also narrower than it looks, because the JVM buys its
-peak with cores. Same 64k-call load, server CPU metered from `/proc`
-(utime+stime, all threads), servers pinned with `taskset` to
-container-shaped budgets:
-
-| budget | native | JVM (warmed) |
-|---|---|---|
-| 1 core | 17.0–17.4k calls/s, **183 MB** peak | 16.2–17.5k calls/s, 335 MB peak |
-| 2 cores | 23.2k calls/s, 58 µs CPU/call, **183 MB** | 23.1k calls/s, 69 µs CPU/call, 434 MB |
-| unconstrained (20 cores) | 15–22k calls/s at ~2 cores, 140 µs CPU/call, **181 MB** | 23–29k calls/s at ~4 cores, 169 µs CPU/call, 644 MB |
-
-Per request, the native image consistently spends *less* CPU; the JIT's
-throughput lead exists only where spare cores exist to burn. At the 1–2-CPU
-shape a Knative pod actually gets, throughput is a wash and the native image
-does it in roughly half the memory — so for pods-per-node density, native
-wins on every axis that matters, not just cold start. The JVM's case is the
-dedicated always-on service with cores to spare and latency to shave.
-
-That is the loopback picture, and it is an 8-byte echo over a Unix socket on
-x86. On the cluster at 1 KB bodies over TCP the same pod shape reverses it:
-the native arm delivers 0.3× the JVM's requests at 3–4× the CPU each, in about
-half the memory — see the conclusion in
-[`docs/soak-results.md`](docs/soak-results.md). For a service that carries
-traffic at production body sizes, the JVM; for scale-from-zero and idle
-density, native.
-
-## Against REST
-
-`bazel run //bench:run` measures full round trips on loopback with persistent
-connections — identical echo semantics, this library versus the ordinary
-Clojure REST stack (Pedestal 0.8.1 on Jetty, jsonista both sides, JDK
-HttpClient). Mean latency, quick-mode criterium, JDK 21, Linux x86_64:
-
-| payload | gRPC (clj-grpc) | REST (Pedestal+JSON) |
-|---|---|---|
-| small (~10 B) | 252 µs | 826 µs |
-| medium (1 KB) | 280 µs | 902 µs |
-| large (64 KB) | 1.57 ms | 4.37 ms |
-
-~3× at every size, and the gap holds from framing-dominated to
-bytes-dominated payloads. The smoke test keeps both arms serving and agreeing
-on every `bazel test //...`.
-
-**Provenance, and one claim to distrust.** This table was measured 2026-08-23
-on clj-protobuf 0.1.6 — before the descriptor-compiled codec (0.2.0) that this
-library now depends on, which is worth 6–17% CPU per request on the cluster. A
-single rerun on 0.2.2 put small and medium within a few percent of the rows
-above but the 64 KB ratio near 1.8× rather than 2.8×, so **"the gap holds …
-to bytes-dominated payloads" is the sentence to doubt**. That rerun was taken
-on a machine busy with other builds and moved both arms in implausible
-directions, so it is not enough to republish: the table stands as measured
-until someone reruns `bazel run //bench:run` on a quiet host.
-
-## On-cluster campaigns
-
-Everything above is loopback. [`docs/soak-results.md`](docs/soak-results.md)
-carries the on-cluster campaign results — multi-hour soaks, capacity ramps past
-the knee, and streaming throughput on identical 1-CPU pods. The ladder on 1 KB
-bodies, medians on the shipped chart: REST HTTP/1.1 ~836 rps → h2c ~850 →
-**gRPC unary ~8,374 (10×) → bidi stream ~17,000 msg/s (20×)**. Two earlier headlines here were
-withdrawn by that campaign rather than merely refined: the 7.5×/16× streaming
-ratios were the old k6 driver under-measuring unary, and "the executor trade
-inverts with load" was a loopback artifact — on a 1-CPU pod `:direct` leads on
-CPU per request, capacity and p50 alike.
-
-Those are **per-core** figures, and a gRPC arm reaches them only if the client
-opens enough connections: a connection binds to one event loop, so one
-multiplexed connection to a multi-core pod uses one core of it — measured pinned
-at 0.90 cores while the node had a full core spare. Size clients by connection
-count as well as pod CPU.
-
-The harness lives in [`soak/`](soak/), raw per-step tables in
-[`docs/results/`](docs/results/).
+- **Handlers run on virtual threads.** Keep that default unless you know the
+  shape: `:executor :direct` wins on 1-CPU pods and many-connection clients,
+  virtual threads win for a single-connection client on a multi-core pod. A
+  handler that blocks on a direct executor stalls every connection on its event
+  loop, which is why the safe setting is the default.
+- **Generate streaming services with `interop=true`** — protoc-gen-clojure's
+  typed paths are worth real capacity and CPU on streams, and latency on unary.
+- **Four server options move streaming materially** on a container-shaped pod:
+  `:inbound-credits`, `:worker-threads`, `-Xmn`, and
+  `:initial-flow-control-window`.
+- **Against an ordinary Clojure REST stack** this is roughly 3× on loopback and
+  about an order of magnitude on the cluster — where the campaign record lives
+  in [`docs/soak-results.md`](docs/soak-results.md), with raw per-step tables in
+  [`docs/results/`](docs/results/).
+- **Native image or JVM** is a workload question, not a ranking: 79 ms
+  time-to-first-RPC and half the memory against a warm JIT's throughput, and
+  the two swap places between loopback and production body sizes.
 
 ## Building
 

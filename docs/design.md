@@ -195,8 +195,8 @@ The steady-state half of the trade is measured too (`//bench:steady`, same
 two servers, warm JVM client, 20k-call warmup): once the JIT is warm the JVM
 serves unary p50 ~247 µs and ~29k calls/s at 32-way against the native
 image's ~315 µs and ~18k calls/s. Native buys the start, the JIT buys the
-cruise; the README carries both tables so a consumer can pick by workload
-instead of by ideology.
+cruise; [`performance.md`](performance.md) carries both tables so a consumer
+can pick by workload instead of by ideology.
 
 ## Measured, not asserted
 
@@ -205,7 +205,8 @@ clj-protobuf's serialization corpus, and this repo's RPC benchmark — full
 round trips on loopback against the ordinary Clojure REST stack (Pedestal on
 Jetty, jsonista both sides, JDK HttpClient), identical echo semantics asserted
 before anything is timed. ~2.8× at every payload size, framing-dominated
-through bytes-dominated; the README carries the table.
+through bytes-dominated; [`performance.md`](performance.md) carries the table,
+and the provenance caveat that qualifies its largest payload.
 
 ## Build and release
 
