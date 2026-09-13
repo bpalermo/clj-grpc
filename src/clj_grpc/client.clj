@@ -10,11 +10,13 @@
     :client-streaming -> {:send! (fn [msg]) :close! (fn []) :response promise}
     :bidi             observer-map -> {:send! ... :close! ...}; responses
                       arrive through the caller's {:on-next ...} map"
-  (:require [clj-grpc.transport :as transport])
+  (:require [clj-grpc.interceptor :as interceptor]
+            [clj-grpc.transport :as transport])
   ;; No Netty type appears here: the NettyChannelBuilder is constructed inside
   ;; clj-grpc.impl.netty (loaded via requiring-resolve at first construction)
   ;; and comes back as the generic ManagedChannelBuilder. See transport.clj.
-  (:import [io.grpc CallOptions ManagedChannel ManagedChannelBuilder]
+  (:import [io.grpc CallOptions Channel ClientInterceptor ClientInterceptors
+            ManagedChannel ManagedChannelBuilder]
            [io.grpc.stub ClientCalls StreamObserver]
            [java.util.concurrent TimeUnit]))
 
@@ -30,7 +32,10 @@
                       connection warm through idle proxies (Knative activator)
     :idle-timeout-ms  channel idle timeout
     :max-inbound-message-size  bytes
-    :interceptors     [io.grpc.ClientInterceptor ...]
+    :interceptors     [f-or-ClientInterceptor ...] — fns of the call,
+                      (fn [call next] ...), mixed with raw ClientInterceptors;
+                      [a b c] runs a outermost. See clj-grpc.interceptor.
+                      invoke's opts take the same key per call.
     :executor         Executor for callbacks, or :direct (same sharp edge as
                       the server: never block a direct callback)
     :default-service-config  map, e.g. retry policy (enables retries when set)"
@@ -61,7 +66,12 @@
       (-> builder
           (.defaultServiceConfig ^java.util.Map default-service-config)
           (.enableRetry)))
-    (doseq [i interceptors] (.intercept builder ^"[Lio.grpc.ClientInterceptor;" (into-array io.grpc.ClientInterceptor [i])))
+    ;; Reversed: the builder runs the last-registered interceptor outermost,
+    ;; and the documented order is the vector's. Nothing at all when empty.
+    (when (seq interceptors)
+      (.intercept builder ^"[Lio.grpc.ClientInterceptor;"
+                  (into-array ClientInterceptor
+                              (map interceptor/client-interceptor (reverse interceptors)))))
     (.build builder)))
 
 (defn- call-options ^CallOptions [{:keys [deadline-ms wait-for-ready]}]
@@ -80,12 +90,33 @@
    :close! (fn [] (.onCompleted req-obs))
    :error! (fn [t] (.onError req-obs t))})
 
+(defn- intercept-channel
+  "The channel with per-call interceptors and declared headers in front of
+  it — outermost relative to the channel's own. interceptForward keeps the
+  vector's order as the running order, so no reversal here."
+  ^Channel [^Channel ch interceptors headers]
+  (ClientInterceptors/interceptForward
+   ch
+   ^java.util.List
+   (mapv interceptor/client-interceptor
+         (cond->> interceptors
+           headers (cons (fn [call next]
+                           (next (update call :headers merge headers))))))))
+
 (defn invoke
   "Call one method. The blocking shapes block; the streaming-in shapes return
-  immediately with the request-side controls."
+  immediately with the request-side controls.
+
+  opts: :deadline-ms, :wait-for-ready, and per call
+    :headers       a map of outgoing headers for this call
+    :interceptors  [f-or-ClientInterceptor ...] for this call, outermost
+                   relative to the channel's; see clj-grpc.interceptor"
   ([ch method request] (invoke ch method request nil))
-  ([^ManagedChannel ch {:keys [type method-descriptor]} request opts]
-   (let [md   @method-descriptor
+  ([ch {:keys [type method-descriptor]} request {:keys [interceptors headers] :as opts}]
+   (let [^Channel ch (if (or (seq interceptors) headers)
+                        (intercept-channel ch interceptors headers)
+                        ch)
+         md   @method-descriptor
          copt (call-options opts)]
      (case type
        :unary

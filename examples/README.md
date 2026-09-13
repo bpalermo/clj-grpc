@@ -68,6 +68,15 @@ grpcurl -plaintext -d '{"text": "hi"}' localhost:8080 example.echo.Echo/Say
   `bazel run //examples:async`; `//examples:client` talks to it unchanged,
   because the adapter changes how the handler is written and not what is on
   the wire.
+- [`src/example/echo/interceptors.clj`](src/example/echo/interceptors.clj) —
+  three interceptors as plain functions of the call: `request-log` (server;
+  wired into the example server by default, so `bazel run //examples:server`
+  prints a line per call and stamps `x-echo-served-by` on every response),
+  `require-token` (server; admits `authorization: Bearer <token>` and tells the
+  handler who called, refuses everything else before any handler runs) and
+  `bearer` (client; declares the header, captures the stamped response header).
+  Health probes pass through the same chain — `:service` is how they are told
+  apart, and `request-log` shows it.
 - [`test/example/echo/example_e2e_test.clj`](test/example/echo/example_e2e_test.clj) —
   the example server on an ephemeral port, the example client against it,
   every shape asserted. Runs on every `bazel test //...`, so the example
@@ -77,6 +86,10 @@ grpcurl -plaintext -d '{"text": "hi"}' localhost:8080 example.echo.Echo/Say
   consumer, which is the only way the flow-control path runs at all: an echo
   cannot outrun its client. Asserts that `send!` reported a full transport and
   that `:on-ready` restarted the pump, so neither can silently stop working.
+- [`test/example/echo/interceptors_test.clj`](test/example/echo/interceptors_test.clj) —
+  the token admitted through every shape with the response header captured on
+  the client, and its absence refused with `UNAUTHENTICATED` and the
+  `www-authenticate` trailer a browser expects.
 
 `//examples/proto:echo_java_proto` puts protoc's Java classes on the classpath
 so the generated namespace resolves its class hints; drop that dep and

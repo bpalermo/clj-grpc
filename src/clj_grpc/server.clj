@@ -61,7 +61,13 @@
                   executor stalls the transport for every connection sharing
                   that loop. Opt in only for handlers that provably never
                   block.
-    :interceptors [io.grpc.ServerInterceptor ...]
+    :interceptors [f-or-ServerInterceptor ...] — fns of the call,
+                  (fn [call next] ...), mixed freely with raw
+                  io.grpc.ServerInterceptors; [a b c] runs a outermost. The
+                  call map, rejection, and response headers/trailers are
+                  documented in clj-grpc.interceptor; handlers read the call
+                  through clj-grpc.context. Health and reflection calls pass
+                  through the chain too — :service tells them apart.
     :permit-keepalive {:time-ms n :without-calls bool} — the pings this server
                   ACCEPTS. gRPC's default permit is 5 minutes and calls-only;
                   a client pinging faster gets GOAWAY too_many_pings, so a
@@ -96,12 +102,13 @@
   Handlers run on virtual threads by default (:executor overrides): Clojure
   handlers block — that is the model — and grpc's default shared pool is sized
   for handlers that never do."
-  (:require [clj-grpc.transport :as transport])
+  (:require [clj-grpc.interceptor :as interceptor]
+            [clj-grpc.transport :as transport])
   ;; No Netty or grpc-netty type appears here: the NettyServerBuilder is
   ;; constructed inside clj-grpc.impl.netty (loaded via requiring-resolve at
   ;; first construction) and comes back as the generic ServerBuilder, on which
   ;; everything below is transport-agnostic. See transport.clj for why.
-  (:import [io.grpc Server ServerBuilder ServerInterceptor
+  (:import [io.grpc Server ServerBuilder
             ServerServiceDefinition Status StatusRuntimeException]
            [io.grpc.protobuf.services HealthStatusManager ProtoReflectionServiceV1]
            [io.grpc.stub ServerCalls ServerCalls$BidiStreamingMethod
@@ -276,7 +283,11 @@
       (.useTransportSecurity builder
                              (File. (str (:cert-chain tls)))
                              (File. (str (:private-key tls)))))
-    (doseq [^ServerInterceptor i interceptors] (.intercept builder i))
+    ;; Reversed: the builder runs the last-registered interceptor outermost,
+    ;; and the documented order is the vector's. Nothing at all when empty.
+    (when (seq interceptors)
+      (doseq [i (reverse interceptors)]
+        (.intercept builder (interceptor/server-interceptor i))))
     (doseq [[k v] {:worker-threads worker-threads
                    :initial-flow-control-window initial-flow-control-window}]
       (when (and v (not (and (integer? v) (pos? v))))

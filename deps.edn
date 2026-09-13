@@ -68,7 +68,7 @@
                       {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
          :main-opts ["-m" "cognitect.test-runner"]
          :exec-fn cognitect.test-runner.api/test
-         :exec-args {:patterns ["clj-grpc\\.(e2e|lazy-netty|netty-alignment|service-codec)-test"]}}
+         :exec-args {:patterns ["clj-grpc\\.(e2e|interceptor|lazy-netty|netty-alignment|service-codec)-test"]}}
   ;; The core.async example (//examples:async_*), which is a consumer of the
   ;; public handler shapes and nothing more — core.async is deliberately not a
   ;; dependency of the library itself, which must also build as a native image.

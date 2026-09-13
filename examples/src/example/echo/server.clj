@@ -15,7 +15,8 @@
   proto->X / X->proto fns are the edges, plain data is the middle."
   (:require [clj-grpc.knative :as knative]
             [clj-grpc.server :as server]
-            [example.echo.echo :as echo])
+            [example.echo.echo :as echo]
+            [example.echo.interceptors :as interceptors])
   ;; A real main class, so the deploy jar's manifest works as a GraalVM
   ;; native-image entry point (//examples:echo_native).
   (:gen-class))
@@ -66,7 +67,12 @@
   started server — the e2e test starts one on an ephemeral port with
   {:address 0} and reads the bound port back."
   [opts]
-  (-> (knative/server (merge {:services [echo-service]} opts))
+  ;; One interceptor on by default: it logs each call and stamps a response
+  ;; header, which also puts the interceptor machinery into the native image
+  ;; CI builds from this server — so it is proven there on every change.
+  (-> (knative/server (merge {:services [echo-service]
+                              :interceptors [interceptors/request-log]}
+                             opts))
       server/start))
 
 (defn -main [& _]
