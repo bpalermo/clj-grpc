@@ -52,8 +52,36 @@
              on-served-by (assoc :on-headers
                                  (fn [md] (on-served-by (metadata/header md "x-echo-served-by")))))))))
 
+(defn timing
+  "Client. Reports every call's method, final status and wall time to
+  `on-done` — the shape a latency histogram or error counter hangs off.
+  :on-trailers fires once per call, after the last message, with the status
+  the call closed with."
+  [on-done]
+  (fn [{:keys [method] :as call} next]
+    (let [t0 (System/nanoTime)]
+      (next (assoc call :on-trailers
+                   (fn [^io.grpc.Status status _trailers]
+                     (on-done {:method method
+                               :status (str (.getCode status))
+                               :ms     (/ (- (System/nanoTime) t0) 1e6)})))))))
+
+(defn propagate
+  "Client, for a channel a HANDLER uses to call the next service: forwards
+  one header from the call being served to the call being made. A client
+  interceptor runs on the thread making the call — inside a handler, the
+  callback thread, where the incoming call's context is attached — so it
+  can read the incoming header. Harmless on a channel used outside a call:
+  no context, no header, nothing declared."
+  [name]
+  (fn [call next]
+    (next (if-let [v (context/header name)]
+            (update call :headers assoc name v)
+            call))))
+
 (defn whoami
   "What a handler sees: the user the interceptor attached, and the peer.
-  Not an interceptor — the other half of the contract, for the docs."
+  Not an interceptor — the other half of the contract. The example test
+  serves it as the reply to Say."
   []
   {:user (:user (context/call)) :peer (str (context/peer))})

@@ -74,9 +74,13 @@ grpcurl -plaintext -d '{"text": "hi"}' localhost:8080 example.echo.Echo/Say
   prints a line per call and stamps `x-echo-served-by` on every response),
   `require-token` (server; admits `authorization: Bearer <token>` and tells the
   handler who called, refuses everything else before any handler runs) and
-  `bearer` (client; declares the header, captures the stamped response header).
-  Health probes pass through the same chain — `:service` is how they are told
-  apart, and `request-log` shows it.
+  `bearer` (client; declares the header, captures the stamped response header),
+  `timing` (client; latency and status per call from `:on-trailers`),
+  `propagate` (client, used from inside a handler; forwards an incoming header
+  to the next service) and `whoami` (a handler reading the call through
+  `clj-grpc.context`). Health probes pass through the same chain — `:service`
+  is how they are told apart, and `request-log` shows it. The guide is
+  [`docs/interceptors.md`](../docs/interceptors.md).
 - [`test/example/echo/example_e2e_test.clj`](test/example/echo/example_e2e_test.clj) —
   the example server on an ephemeral port, the example client against it,
   every shape asserted. Runs on every `bazel test //...`, so the example
@@ -88,8 +92,10 @@ grpcurl -plaintext -d '{"text": "hi"}' localhost:8080 example.echo.Echo/Say
   that `:on-ready` restarted the pump, so neither can silently stop working.
 - [`test/example/echo/interceptors_test.clj`](test/example/echo/interceptors_test.clj) —
   the token admitted through every shape with the response header captured on
-  the client, and its absence refused with `UNAUTHENTICATED` and the
-  `www-authenticate` trailer a browser expects.
+  the client, its absence refused with `UNAUTHENTICATED` and the
+  `www-authenticate` trailer a browser expects, a handler answering with what
+  it read from the call, every shape timed, and a request id sent to one
+  server arriving at the next one through the first's handler.
 
 `//examples/proto:echo_java_proto` puts protoc's Java classes on the classpath
 so the generated namespace resolves its class hints; drop that dep and
