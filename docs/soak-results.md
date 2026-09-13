@@ -103,10 +103,10 @@ stalls every connection on its loop.
 - The multi-core executor result is x86 and loopback. The cluster cannot
   host it (4-core nodes with ~2.2 cores of headroom); an arm64 host with
   four free cores would say whether the ratios carry.
-- ~~The ladder re-run on chart 0.2.23~~ — done 2026-09-12: `:direct` unary
-  ~8,300 / streaming ~16,000; virtual-thread streaming ~13,900 (+76%);
-  interop on virtual threads ~16,000. Every figure in the ladder table
-  predates both defaults and the table itself is the next thing to refresh.
+- ~~The ladder re-run on the shipped chart~~ — done 2026-09-13: the table
+  above is now chart 0.2.27 medians (unary 8,374, stream 17,012; ratios
+  10.0× and 20.3×). Virtual-thread streaming on 0.2.23 was ~13,900 (+76%),
+  interop on virtual threads ~16,000.
 - ~~Typed interop on an unsaturated multi-core host~~ — done 2026-09-12: the
   advantage tracks the mode (streaming −10–22%, unary nil), not the cores. It
   does not change the ordering above.
@@ -115,19 +115,25 @@ stalls every connection on its loop.
 
 1 KB protobuf / 1.3 KB JSON bodies, `:direct` executor, each rung differing from
 the one below in exactly one thing, measured on one instrument (Envoy
-Nighthawk). **Median of three replicates per rung**, chart 0.2.21/0.2.22
-(identical arm images), 2026-09-10/11, each on a ramp that runs past the knee,
-node CPU sampled at every step to confirm the host was never the limit.
+Nighthawk). **Median of replicates per rung**, chart 0.2.27 — the shipped
+defaults: a sized young generation and batched inbound credits on every
+arm, the typed-slot read path on the compiled arm — 2026-09-13, each on a
+ramp that runs past the knee, node CPU sampled at every step to confirm the
+host was never the limit (`results/2026-09-13-ladder-refresh/`).
 
 | rung | switch | capacity per 1-CPU pod | replicates | vs REST | migration cost |
 |---|---|---|---|---|---|
-| 0 | REST HTTP/1.1 | **795 rps** | 795 / 781 / 806 | — | — |
-| 1 | → h2c | **800 rps** | 800 / 800 / 800 | 1× | a server config flag; clients must speak h2c |
-| 2 | → gRPC unary | **6,540 rps** | 6,541 / 6,618 / 6,358 | **8.2×** | new clients, protobuf schema, serialization; API shape unchanged |
-| 3 | → gRPC stream | **14,000 msg/s** | 14,009 / 13,966 / 14,266 | **17.6×** | API contract: persistent connections, ordering, backpressure |
+| 0 | REST HTTP/1.1 | **836 rps** | 819 / 854 | — | — |
+| 1 | → h2c | **850 rps** | 857 / 843 | 1× | a server config flag; clients must speak h2c |
+| 2 | → gRPC unary | **8,374 rps** | 8,203 / 8,417 / 8,374 | **10.0×** | new clients, protobuf schema, serialization; API shape unchanged |
+| 3 | → gRPC stream | **17,012 msg/s** | 17,102 / 17,012 / 16,604 | **20.3×** | API contract: persistent connections, ordering, backpressure |
 
-Replicate spread is 0.1–4.0%. The single-run figures these replace (6,700 and
-14,400) were each the *best* of their runs, not the middle.
+Replicate spread is 1.6–4.2%. The previous table (chart 0.2.21/0.2.22,
+2026-09-10/11: 795 / 800 / 6,540 / 14,000, ratios 8.2× and 17.6×) predated
+the two defaults and the typed read path; the JVM rungs gained 21–28% from
+them and REST 5–6% (the young generation alone). The single-run figures
+before that (6,700 and 14,400) were each the *best* of their runs, not the
+middle.
 
 These replace an earlier table reading 750 / 750 / 4,700 (6×) / 10,000 (13×),
 which was wrong in two independent ways:

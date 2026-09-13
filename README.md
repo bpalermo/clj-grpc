@@ -269,8 +269,8 @@ until someone reruns `bazel run //bench:run` on a quiet host.
 Everything above is loopback. [`docs/soak-results.md`](docs/soak-results.md)
 carries the on-cluster campaign results — multi-hour soaks, capacity ramps past
 the knee, and streaming throughput on identical 1-CPU pods. The ladder on 1 KB
-bodies, median of three runs: REST HTTP/1.1 ~795 rps → h2c ~800 → **gRPC unary
-~6,540 (8.2×) → bidi stream ~14,000 msg/s (17.6×)**. Two earlier headlines here were
+bodies, medians on the shipped chart: REST HTTP/1.1 ~836 rps → h2c ~850 →
+**gRPC unary ~8,374 (10×) → bidi stream ~17,000 msg/s (20×)**. Two earlier headlines here were
 withdrawn by that campaign rather than merely refined: the 7.5×/16× streaming
 ratios were the old k6 driver under-measuring unary, and "the executor trade
 inverts with load" was a loopback artifact — on a 1-CPU pod `:direct` leads on
