@@ -15,7 +15,11 @@
 
   Calling: a scaled-to-zero revision puts the activator in the request path.
   wait-for-ready keeps the first call from failing while the pod comes up,
-  and keepalives hold the connection through idle proxies."
+  and keepalives hold the connection through idle proxies.
+
+  Probes and shutdown, and the liveness trap — readiness on the status the app
+  declares, liveness on a name it never flips, and the budget rule holding
+  both under terminationGracePeriodSeconds: docs/kubernetes.md."
   (:require [clj-grpc.client :as client]
             [clj-grpc.server :as server]))
 
