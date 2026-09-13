@@ -142,7 +142,6 @@
 
 (defn -main [& _]
   (let [srv (start {})]
+    (knative/shutdown-hook! srv)
     (println "channel-shaped Echo on" (server/port srv) "— ^C to stop")
-    (.addShutdownHook (Runtime/getRuntime)
-                      (Thread. ^Runnable #(server/shutdown srv {:grace-ms 5000})))
     (server/await-termination srv)))

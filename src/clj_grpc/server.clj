@@ -306,11 +306,25 @@
   "Graceful by default; :grace-ms bounds the drain, then forces. The health
   service (when present) enters its terminal NOT_SERVING state first, so
   load balancers stop routing before the listener closes — the drain order
-  Kubernetes rollouts assume."
+  Kubernetes rollouts assume.
+
+  :drain-delay-ms waits between those two steps. A pod is told to stop and
+  taken out of its endpoints concurrently, so for a moment after SIGTERM it
+  can still be handed new connections; closing the listener at once refuses
+  them, which is the truncation a graceful shutdown exists to prevent. The
+  health flip is immediate either way — probes see NOT_SERVING during the
+  delay — only the listener close waits.
+
+  Without :grace-ms this returns as soon as the listener is closed, with
+  in-flight calls still running: fine from a lifecycle that will wait for
+  the process, wrong from a shutdown hook, where the JVM halts when the hook
+  returns. clj-grpc.knative/shutdown-hook! sets both."
   ([s] (shutdown s nil))
   ([{:keys [^Server server ^HealthStatusManager health owned-executor] :as s}
-    {:keys [grace-ms]}]
+    {:keys [grace-ms drain-delay-ms]}]
    (when health (.enterTerminalState health))
+   (when (and drain-delay-ms (pos? (long drain-delay-ms)))
+     (Thread/sleep (long drain-delay-ms)))
    (.shutdown server)
    (when grace-ms
      (when-not (.awaitTermination server (long grace-ms) TimeUnit/MILLISECONDS)
