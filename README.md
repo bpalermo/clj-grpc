@@ -100,8 +100,10 @@ so under `--initialize-at-build-time` nothing Netty-marked initializes during
 image build. The jar ships the `META-INF/native-image` config that goes with
 that — run-time-init for the leaf, `io.grpc.netty` and `io.netty.handler.ssl`,
 plus the reflection entries the runtime require needs — and `native-image`
-discovers it automatically. `lazy_netty_test` fails the build if a Netty
-reference ever escapes the leaf.
+discovers it automatically. The same config sets `--install-exit-handlers`,
+because a native executable otherwise dies on SIGTERM without running shutdown
+hooks — indistinguishable from a drained server, which is why CI asserts it.
+`lazy_netty_test` fails the build if a Netty reference ever escapes the leaf.
 
 Two consumer caveats: every namespace in the image must be AOT-compiled, since
 a native image has no Clojure compiler; and generated code should run the

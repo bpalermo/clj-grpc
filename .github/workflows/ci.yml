@@ -114,24 +114,33 @@ jobs:
         run: |
           set -o pipefail
           PORT=18081 ./bazel-bin/examples/echo-server &
+          server=$!
           for i in $(seq 1 50); do
             ss -ltn | grep -q 18081 && break
             sleep 0.2
           done
           bazel run //examples:probe -- localhost:18081 > probe.out 2>&1 &
+          probe=$!
           for i in $(seq 1 100); do
             grep -q 'health -> SERVING' probe.out && break
             sleep 0.2
           done
           grep -q 'health -> SERVING' probe.out
-          kill -TERM %1
-          wait %2
-          wait %1 || status=$?
+          kill -TERM "$server"
+          wait "$probe" || true
+          status=0; wait "$server" || status=$?
           cat probe.out
-          grep -q 'health -> NOT_SERVING' probe.out
+          echo "server exit status: ${status}"
+          if ! grep -q 'health -> NOT_SERVING' probe.out; then
+            echo "::error::the watch closed without seeing NOT_SERVING: the image did" \
+                 "not run the shutdown hook on SIGTERM. The jar's native-image.properties" \
+                 "carries --install-exit-handlers for exactly this; check it is still" \
+                 "discovered." >&2
+            exit 1
+          fi
           # 143 is SIGTERM's exit status whether or not hooks ran; the
           # NOT_SERVING line above is what proves they did.
-          [ "${status:-0}" = "143" ] || { echo "server exit ${status:-0}, expected 143" >&2; exit 1; }
+          [ "${status}" = "143" ] || { echo "::error::server exit ${status}, expected 143" >&2; exit 1; }
 
   # Both lockfiles, which nothing else checks. A stale lockfile does not fail a
   # build — it changes what the build resolves, quietly — so neither of these is

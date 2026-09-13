@@ -70,6 +70,12 @@
   or SIGKILL arrives mid-drain and cuts exactly what this hook exists to
   finish. The defaults leave 8 s.
 
+  In a GraalVM native image, hooks run on SIGTERM only with
+  --install-exit-handlers, which this library's jar-shipped native-image
+  config sets: without it the process just dies, looking from outside exactly
+  like a server that drained. CI asserts the difference against the example
+  binary.
+
   USE THIS WHEN THE SERVER IS THE ONLY THING THAT NEEDS DRAINING. If anything
   else does — a connection pool, an executor, a second server — write one hook
   and call clj-grpc.server/shutdown inside it, in order. JVM shutdown hooks
