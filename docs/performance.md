@@ -75,6 +75,32 @@ buffer without bound — and
 [`examples/src/example/echo/async.clj`](../examples/src/example/echo/async.clj)
 is the worked case over core.async.
 
+## Interceptors cost nothing until you add one — measured
+
+An empty `:interceptors` vector registers nothing and builds nothing, and the
+number agrees. `bazel run //bench:run -- load` (32 platform threads × 3,000
+unary calls, one shared channel), 2026-09-13, idle x86 host, three runs on
+the last commit before interceptors and two on `main` with them:
+
+| | virtual threads | direct |
+|---|---|---|
+| before, three runs | 29,233 / 25,871 / 27,094 calls/s | 17,819 / 18,375 / 19,035 |
+| after, two runs | 28,303 / 27,693 | 18,530 / 18,270 |
+
+The "after" samples sit inside the "before" spread on both arms. That spread
+— about ±6% between back-to-back runs on an idle host — is also this
+instrument's noise floor, worth knowing before any 3% loopback difference
+is read as real.
+
+One thing this table is *not*: evidence about `:direct` versus virtual
+threads. The load bench drives one channel, so one connection, so under
+`:direct` one event loop and one core at any core count; virtual threads
+spread that single connection across every core the host has. `:direct`
+losing at 32-way on a multi-core box is the rule the executor section
+states, not a regression from the older table, which was a smaller host
+with a cheaper per-call loop. A connections knob on the bench would
+reproduce the ladder's crossover on loopback; it does not have one yet.
+
 ## Generate streaming services with `interop=true`
 
 protoc-gen-clojure's typed fast paths (both directions since 0.6.0) measured
