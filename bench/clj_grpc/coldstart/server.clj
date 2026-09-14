@@ -44,6 +44,13 @@
          (System/getenv "WORKER_THREADS")
          (assoc :worker-threads (Long/parseLong (System/getenv "WORKER_THREADS")))
          (System/getenv "FLOW_WINDOW")
-         (assoc :initial-flow-control-window (Long/parseLong (System/getenv "FLOW_WINDOW")))))
+         (assoc :initial-flow-control-window (Long/parseLong (System/getenv "FLOW_WINDOW")))
+         ;; INTERCEPTOR (experiment): passthrough | headers — prices one server
+         ;; interceptor on the soak arm.
+         (System/getenv "INTERCEPTOR")
+         (assoc :interceptors
+                [(case (System/getenv "INTERCEPTOR")
+                   "passthrough" (fn [call next] (next call))
+                   "headers"     (fn [call next] (next (assoc call :response-headers {"x-a" "1"}))))])))
       server/start
       server/await-termination))
