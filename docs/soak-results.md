@@ -594,6 +594,7 @@ says what you lose by turning one off, not what you gain by adding it.
 | protoc-gen-clojure 0.7.0's typed-slot read path on the compiled arm | −6–9% CPU per streamed message on `:direct` one connection (+8% capacity), −4–6% on virtual threads one connection, 0–3% on eight-connection shapes (x86) | the fixture in this PR; the ladder above predates it |
 | `:initial-flow-control-window` 16 MiB | nil on one connection (better tails); +17% on eight connections with two loops, one run (x86) | no — an option since #99 |
 | virtual-thread scheduler parallelism at cores − loops | nil on one connection, −11% on eight (x86) | no |
+| clj-grpc 0.1.12 interceptors | nothing registered: nil on every shape; one server interceptor ~0.5–0.7 µs per unary call (+0.5–1.8% at 60k–100k), nil per streamed message (x86) | not a lever — a cost measured for the docs (`results/2026-09-13-local-interceptors/`) |
 
 ### Where the ladder's numbers come from
 
