@@ -108,7 +108,15 @@
                          :health false}
                         server-opts))
                 server/start)
-        ch (client/channel (str "localhost:" (server/port srv)) {:plaintext true})
+        ;; CLIENT_INTERCEPTOR=headers puts one Clojure client interceptor on
+        ;; the channel — declaring a header, which is the forwarding-call
+        ;; path — to price the client side against the same run without it.
+        ch (client/channel (str "localhost:" (server/port srv))
+                           (cond-> {:plaintext true}
+                             (= "headers" (System/getenv "CLIENT_INTERCEPTOR"))
+                             (assoc :interceptors
+                                    [(fn [call next]
+                                       (next (update call :headers assoc "x-a" "1")))])))
         calls (client/client ch g/greeter-methods {:deadline-ms 60000})]
     {:server srv :channel ch :call (:say-hello calls)}))
 

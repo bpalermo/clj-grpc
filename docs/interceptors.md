@@ -26,6 +26,11 @@ vector:
 (client/invoke  ch method req {:interceptors [d] :headers {"x-id" "1"}})   ; this call only
 ```
 
+What it costs, measured on a pinned harness: **nothing when the vector is
+empty**, on every shape; **about 0.5–0.7 µs per unary call** for one
+interceptor, against ~35 µs of grpc-java machinery; **nothing measurable per
+streamed message**. The tables are in [`performance.md`](performance.md).
+
 Raw `io.grpc.ServerInterceptor` / `ClientInterceptor` values go in the same
 vector and are ordered with the rest. **`[a b c]` runs `a` outermost** — first
 on the way in, last on the way out — on every path. (grpc's own builders run

@@ -161,7 +161,8 @@ and `Contexts/interceptCall` lets the adapter hang the enriched map on it. The
 map exists whenever at least one Clojure interceptor is in the chain; with
 none, nothing is built and nothing is registered, so an empty vector costs
 what it did before there were interceptors: nothing — measured in
-[`performance.md`](performance.md#interceptors-cost-nothing-until-you-add-one--measured). The context is a
+[`performance.md`](performance.md), which also prices opting in at
+~0.5–0.7 µs per unary call and nothing per streamed message. The context is a
 ThreadLocal: a thread the handler starts itself must be wrapped with
 `(.wrap (Context/current) f)` to see it, which the docstring and a test say.
 

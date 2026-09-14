@@ -75,30 +75,66 @@ buffer without bound — and
 [`examples/src/example/echo/async.clj`](../examples/src/example/echo/async.clj)
 is the worked case over core.async.
 
-## Interceptors cost nothing until you add one — measured
+## Interceptors: nothing registered costs nothing; one costs ~0.5–0.7 µs per unary call
 
-An empty `:interceptors` vector registers nothing and builds nothing, and the
-number agrees. `bazel run //bench:run -- load` (32 platform threads × 3,000
-unary calls, one shared channel), 2026-09-13, idle x86 host, three runs on
-the last commit before interceptors and two on `main` with them:
+Measured two ways, 2026-09-13/14, predictions written before the runs.
+
+**On the pinned harness** (cgroup-precise CPU per message, one-variable
+pairs, x86, virtual threads, `soak/results/2026-09-13-local-interceptors/`):
+
+| arm | stream, 1 conn (µs/msg) | stream, 8 conns | unary, 8 conns (µs/call) |
+|---|---|---|---|
+| A: 0.1.12 with an empty vector vs 0.1.11 | +0.3 to +0.8% | +0.1 to +0.5% | ±0.5% |
+| B: one pass-through server interceptor | ±0.3% | ±0.3% | **+0.5 to +1.2%** at 60k–100k rps, ~0.5 µs per call |
+| C: one interceptor setting response headers | −0.7 to +0.7% | −0.8% (one +3.9% row at the top step) | **+0.6 to +1.8%**, ~0.7 µs per call |
+
+All inside the pre-registered bands (floor 3%). Three things this says:
+
+- **An empty vector costs nothing under load**, on every shape — the
+  "nothing registered, nothing built" claim holds, not only on loopback.
+- **A pass-through interceptor costs nothing measurable per streamed
+  message.** The context attach is effectively per call, not a per-callback
+  tax, so there is nothing to optimise on the streaming path.
+- **On unary, an interceptor costs about 0.5–0.7 µs per call** — the call
+  map, `Contexts/interceptCall`, and for C the forwarding proxy plus a
+  Metadata merge — against ~35 µs of grpc-java machinery. At 40k rps the same
+  absolute cost reads as +5–7%, because the call is under-loaded; the per-call
+  figure is the one to carry.
+
+Reproduce the server arms with `INTERCEPTOR=passthrough|headers` on the soak
+server (`bench/clj_grpc/coldstart/server.clj`).
+
+**On loopback**, `bazel run //bench:run -- load` (32 platform threads × 3,000
+unary calls, one shared channel), idle x86 host. Three runs on the last commit
+before interceptors, two on `main` with an empty vector:
 
 | | virtual threads | direct |
 |---|---|---|
 | before, three runs | 29,233 / 25,871 / 27,094 calls/s | 17,819 / 18,375 / 19,035 |
 | after, two runs | 28,303 / 27,693 | 18,530 / 18,270 |
 
-The "after" samples sit inside the "before" spread on both arms. That spread
-— about ±6% between back-to-back runs on an idle host — is also this
-instrument's noise floor, worth knowing before any 3% loopback difference
-is read as real.
+The "after" samples sit inside the "before" spread on both arms. And the
+client side — one Clojure interceptor declaring a header on the channel
+(`CLIENT_INTERCEPTOR=headers`), two runs each, interleaved:
 
-One thing this table is *not*: evidence about `:direct` versus virtual
-threads. The load bench drives one channel, so one connection, so under
-`:direct` one event loop and one core at any core count; virtual threads
-spread that single connection across every core the host has. `:direct`
-losing at 32-way on a multi-core box is the rule the executor section
-states, not a regression from the older table, which was a smaller host
-with a cheaper per-call loop. A connections knob on the bench would
+| | virtual threads | direct |
+|---|---|---|
+| without | 27,946 / 25,020 | 19,241 / 18,120 |
+| with | 28,381 / 26,456 | 18,174 / 18,442 |
+
+Nil. The spread — about ±6% between back-to-back runs on an idle host — is
+this instrument's noise floor, worth knowing before any 3% loopback
+difference is read as real; a 0.7 µs cost on a 35 µs call is below it by
+construction, which is why the pinned harness is the one that carries the
+number.
+
+One thing the loopback tables are *not*: evidence about `:direct` versus
+virtual threads. The load bench drives one channel, so one connection, so
+under `:direct` one event loop and one core at any core count; virtual
+threads spread that single connection across every core the host has.
+`:direct` losing at 32-way on a multi-core box is the rule the executor
+section states, not a regression from the older table, which was a smaller
+host with a cheaper per-call loop. A connections knob on the bench would
 reproduce the ladder's crossover on loopback; it does not have one yet.
 
 ## Generate streaming services with `interop=true`
