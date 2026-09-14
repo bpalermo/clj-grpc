@@ -13,6 +13,9 @@ loops, unary on eight connections with eight driver workers. The unary set
 ran the next morning after the runner hit an unbound variable (`set -u`)
 between sets; the streaming rows are from the evening.
 
+Each pair is same-session (streaming rows 2026-09-13 evening, unary rows
+2026-09-14 morning after the runner tripped `set -u` between sets).
+
 | arm | stream, 1 conn (µs/msg) | stream, 8 conns | unary, 8 conns (µs/call) |
 |---|---|---|---|
 | A: 0.1.12 empty vs 0.1.11 | +0.3 to +0.8% | +0.1 to +0.5% | ±0.5% |
