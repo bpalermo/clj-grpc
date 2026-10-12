@@ -109,7 +109,7 @@ for both is a restart storm.
 ## Non-shaded Netty, deliberately
 
 `grpc-netty-shaded` makes the native transports unreachable; epoll is how UDS
-and the fast path work, so this library pins **grpc 1.83.1 ↔ Netty
+and the fast path work, so this library pins **grpc 1.84.2 ↔ Netty
 4.2.16.Final** per grpc-java's SECURITY.md pairing table, every netty artifact
 pinned top-level in `deps.edn`. The `netty_alignment_test` fails CI if any
 loaded netty jar drifts — it caught grpc's own pom pulling two 4.2.15 jars on

@@ -67,10 +67,10 @@
       ]
     },
     {
-      "coordinates": "com.github.bpalermo/clj-protobuf:0.3.0",
+      "coordinates": "com.github.bpalermo/clj-protobuf:0.4.0",
       "target": "com_github_bpalermo_clj_protobuf",
-      "path": "com/github/bpalermo/clj-protobuf/0.3.0/clj-protobuf-0.3.0.jar",
-      "sha256": "14c7451f333f7ee518f6e1b80eff5d4b281ef19945c3beb5eab77fc9626ff084",
+      "path": "com/github/bpalermo/clj-protobuf/0.4.0/clj-protobuf-0.4.0.jar",
+      "sha256": "56d2807867ae662ba28aad120c26d473e13481736a48a74ff40055f4b1c51ed3",
       "deps": [
         "com_google_protobuf_protobuf_java"
       ]
@@ -203,27 +203,27 @@
       "deps": []
     },
     {
-      "coordinates": "io.grpc/grpc-api:1.83.1",
+      "coordinates": "io.grpc/grpc-api:1.84.2",
       "target": "io_grpc_grpc_api",
-      "path": "io/grpc/grpc-api/1.83.1/grpc-api-1.83.1.jar",
-      "sha256": "96a94b488a8a9a922e9e455ac4c87d9edcb37be4ed79ec1f14e98da267a6c505",
+      "path": "io/grpc/grpc-api/1.84.2/grpc-api-1.84.2.jar",
+      "sha256": "457897231c31fdae557d853f58739f35d3c752373115b523913026631882a82b",
       "deps": [
         "com_google_code_findbugs_jsr305",
         "com_google_errorprone_error_prone_annotations"
       ]
     },
     {
-      "coordinates": "io.grpc/grpc-context:1.83.1",
+      "coordinates": "io.grpc/grpc-context:1.84.2",
       "target": "io_grpc_grpc_context",
-      "path": "io/grpc/grpc-context/1.83.1/grpc-context-1.83.1.jar",
-      "sha256": "8224f45eccae567d68e34e7e0d2fde2f4ed36afc56d6496470f5c156b886b768",
+      "path": "io/grpc/grpc-context/1.84.2/grpc-context-1.84.2.jar",
+      "sha256": "964baf971597969a5b8e134b3fe9ecf22fd5bcb0520df8bbacd704ad34026b59",
       "deps": []
     },
     {
-      "coordinates": "io.grpc/grpc-core:1.83.1",
+      "coordinates": "io.grpc/grpc-core:1.84.2",
       "target": "io_grpc_grpc_core",
-      "path": "io/grpc/grpc-core/1.83.1/grpc-core-1.83.1.jar",
-      "sha256": "e417d5fe3b273aba8e24c5bf8edaf400297ae88a2ede828a2b75c3403b3d13e3",
+      "path": "io/grpc/grpc-core/1.84.2/grpc-core-1.84.2.jar",
+      "sha256": "1308df2b6cb572549002c9dd31be0fec8e4e9faaf6f6f2d8c3ee0d790c4d47e3",
       "deps": [
         "com_google_android_annotations",
         "com_google_code_gson_gson",
@@ -234,10 +234,10 @@
       ]
     },
     {
-      "coordinates": "io.grpc/grpc-netty:1.83.1",
+      "coordinates": "io.grpc/grpc-netty:1.84.2",
       "target": "io_grpc_grpc_netty",
-      "path": "io/grpc/grpc-netty/1.83.1/grpc-netty-1.83.1.jar",
-      "sha256": "aa8ea76d5bface5b5d6d3ed3307c981bd2b98e74d368bf1afba7fb6803b9ced6",
+      "path": "io/grpc/grpc-netty/1.84.2/grpc-netty-1.84.2.jar",
+      "sha256": "c98709aacf61d762c945b2e2b2fc2a849d3f7467e269ea133ef90f2250bcb3df",
       "deps": [
         "com_google_errorprone_error_prone_annotations",
         "io_grpc_grpc_util",
@@ -246,10 +246,10 @@
       ]
     },
     {
-      "coordinates": "io.grpc/grpc-protobuf:1.83.1",
+      "coordinates": "io.grpc/grpc-protobuf:1.84.2",
       "target": "io_grpc_grpc_protobuf",
-      "path": "io/grpc/grpc-protobuf/1.83.1/grpc-protobuf-1.83.1.jar",
-      "sha256": "f58e9b04850e8d5a820081de1ba1d93fd641af3182e743f4066818645f1ee58f",
+      "path": "io/grpc/grpc-protobuf/1.84.2/grpc-protobuf-1.84.2.jar",
+      "sha256": "8cc816897ea1bc45df2b768e94cea277d084ba76aea20fd344db0e0ea764973f",
       "deps": [
         "com_google_api_grpc_proto_google_common_protos",
         "com_google_code_findbugs_jsr305",
@@ -257,19 +257,19 @@
       ]
     },
     {
-      "coordinates": "io.grpc/grpc-protobuf-lite:1.83.1",
+      "coordinates": "io.grpc/grpc-protobuf-lite:1.84.2",
       "target": "io_grpc_grpc_protobuf_lite",
-      "path": "io/grpc/grpc-protobuf-lite/1.83.1/grpc-protobuf-lite-1.83.1.jar",
-      "sha256": "70fd274685f8f8b94aeecfd082168ce9518d04da9add5192aeffd46f582de103",
+      "path": "io/grpc/grpc-protobuf-lite/1.84.2/grpc-protobuf-lite-1.84.2.jar",
+      "sha256": "a5b76dcaa97fe7fb58f51141293c6cda3bb070f59a69a4fc4276d86fd7410fc9",
       "deps": [
         "com_google_code_findbugs_jsr305"
       ]
     },
     {
-      "coordinates": "io.grpc/grpc-services:1.83.1",
+      "coordinates": "io.grpc/grpc-services:1.84.2",
       "target": "io_grpc_grpc_services",
-      "path": "io/grpc/grpc-services/1.83.1/grpc-services-1.83.1.jar",
-      "sha256": "fab717666c0571ff7118b83c454668ae5273dbdc0137f77184a890ecc9a33b9d",
+      "path": "io/grpc/grpc-services/1.84.2/grpc-services-1.84.2.jar",
+      "sha256": "18df85b353a98afd2303d5f3bd0faefe3bdb90dff1bc6be65b0887aa336baed6",
       "deps": [
         "com_google_code_gson_gson",
         "com_google_errorprone_error_prone_annotations",
@@ -278,20 +278,20 @@
       ]
     },
     {
-      "coordinates": "io.grpc/grpc-stub:1.83.1",
+      "coordinates": "io.grpc/grpc-stub:1.84.2",
       "target": "io_grpc_grpc_stub",
-      "path": "io/grpc/grpc-stub/1.83.1/grpc-stub-1.83.1.jar",
-      "sha256": "431c1280d85dd34c93f2ede7cc192c591b660a1becb6053da1423b0a6526c86a",
+      "path": "io/grpc/grpc-stub/1.84.2/grpc-stub-1.84.2.jar",
+      "sha256": "fc600c513dd859210d6e5046939ade08b6d6bb3ecaea224d3c02544f4f9e6801",
       "deps": [
         "com_google_errorprone_error_prone_annotations",
         "org_codehaus_mojo_animal_sniffer_annotations"
       ]
     },
     {
-      "coordinates": "io.grpc/grpc-util:1.83.1",
+      "coordinates": "io.grpc/grpc-util:1.84.2",
       "target": "io_grpc_grpc_util",
-      "path": "io/grpc/grpc-util/1.83.1/grpc-util-1.83.1.jar",
-      "sha256": "4e722bf41a8d305e0436f16e69f7787ce5a227dc0dac45be06e8c197f08275e4",
+      "path": "io/grpc/grpc-util/1.84.2/grpc-util-1.84.2.jar",
+      "sha256": "d7521c1973acc173dd569a3d8b466dacc3c56e0d671dac28c84ccde594c22059",
       "deps": [
         "org_codehaus_mojo_animal_sniffer_annotations"
       ]
