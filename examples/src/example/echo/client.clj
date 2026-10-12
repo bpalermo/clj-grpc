@@ -28,8 +28,10 @@
         ((:repeat calls) (echo/RepeatRequest->proto {:text text :count n}))))
 
 (defn summarize
-  "client streaming — the call returns {:send! :close! :response}; stream the
-  requests, close, then deref the response promise."
+  "client streaming — the call returns {:send! :close! :response}, plus
+  :ready?/:request! for flow control; stream the requests, close, then deref
+  the response promise. A reply per request cannot outrun anything, so this
+  ignores what send! answers."
   [calls texts]
   (let [{:keys [send! close! response]} ((:summarize calls) nil)]
     (doseq [t texts]
@@ -41,7 +43,9 @@
 
 (defn converse
   "bidi — replies arrive through the observer map passed in; the call returns
-  {:send! :close!} for the request side."
+  {:send! :close!} for the request side. The map also takes :on-ready and
+  :inbound-credits when a caller needs to pace either direction; see
+  clj-grpc.client's docstring."
   [calls texts]
   (let [replies (atom [])
         done (promise)

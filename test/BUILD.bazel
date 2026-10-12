@@ -86,6 +86,23 @@ clj_test(
 )
 
 clj_library(
+    name = "flow_control_test_lib",
+    srcs = ["clj_grpc/flow_control_test.clj"],
+    namespaces = ["clj-grpc.flow-control-test"],
+    strip_prefix = "test",
+    deps = TEST_DEPS,
+)
+
+# The client half of flow control: send! answering readiness, :ready?,
+# :on-ready, and manual inbound credits paced with :request!.
+clj_test(
+    name = "flow_control_test",
+    size = "medium",
+    ns = "clj-grpc.flow-control-test",
+    deps = [":flow_control_test_lib"],
+)
+
+clj_library(
     name = "event_loops_test_lib",
     srcs = ["clj_grpc/event_loops_test.clj"],
     namespaces = ["clj-grpc.event-loops-test"],
