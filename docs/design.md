@@ -52,9 +52,11 @@ names, making `netty-transport-native-epoll` unreachable — and epoll is how
 both Unix domain sockets and the fast path work. So this library takes the
 alignment problem on, explicitly:
 
-- grpc-java's SECURITY.md pairing table is the authority (grpc 1.83.1 ↔ Netty
+- grpc-java's SECURITY.md pairing table is the authority (grpc 1.84.x ↔ Netty
   4.2.16.Final); `deps.edn` pins **every** netty artifact top-level, because
   tools.deps gives top-level pins absolute precedence over grpc's pom ranges.
+  Worth knowing that the table's rows are per grpc minor and move most
+  releases: 1.83.x pairs 4.2.15, 1.84.x pairs 4.2.16, 1.85.x pairs 4.2.17.
 - `netty_alignment_test` asserts every loaded netty jar reports the pinned
   version and that `NettyChannelBuilder` links. It caught real drift before
   the first commit — grpc-netty 1.83.1's own pom pulls `netty-codec-socks`

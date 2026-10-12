@@ -8,8 +8,10 @@
 ;; epoll is how both Unix domain sockets and the fast path work here. The cost
 ;; of non-shaded is that gRPC and Netty versions must be aligned BY HAND:
 ;;
-;;   grpc-java SECURITY.md pairing (the authority):
-;;     grpc 1.81.x+  <->  netty 4.2.16.Final  <->  tcnative 2.0.81.Final
+;;   grpc-java SECURITY.md pairing (the authority), the rows around us:
+;;     grpc 1.83.x   <->  netty 4.2.15.Final  <->  tcnative 2.0.75.Final
+;;     grpc 1.84.x   <->  netty 4.2.16.Final  <->  tcnative 2.0.81.Final
+;;     grpc 1.85.x-  <->  netty 4.2.17.Final  <->  tcnative 2.0.81.Final
 ;;
 ;; Every netty artifact is pinned at top level because tools.deps gives
 ;; top-level deps absolute precedence over transitive pom ranges — this is the
@@ -22,21 +24,22 @@
 ;; wanted. Document-only add-on.
 {:paths ["src"]
  :deps {org.clojure/clojure {:mvn/version "1.12.5"}
-        com.github.bpalermo/clj-protobuf {:mvn/version "0.3.0"}
-        ;; protobuf-java 4.36.1 arrives through clj-protobuf; protobuf-java-util
-        ;; must match it, and grpc-protobuf 1.83.1's pom drags util in at 3.25.9
+        com.github.bpalermo/clj-protobuf {:mvn/version "0.4.0"}
+        ;; protobuf-java 4.36.1 arrives through clj-protobuf (0.4.0 pins exactly
+        ;; that, so this does not move with it); protobuf-java-util must match
+        ;; it, and grpc-protobuf's pom drags util in at 3.25.9
         ;; — a 3.x util next to a 4.x core, which clj-protobuf's README calls
         ;; unsupported. Pinned top-level for the same reason as the netty block:
         ;; a top-level pin is what beats a transitive pom version.
         com.google.protobuf/protobuf-java-util {:mvn/version "4.36.1"}
 
-        io.grpc/grpc-api {:mvn/version "1.83.1"}
-        io.grpc/grpc-core {:mvn/version "1.83.1"}
-        io.grpc/grpc-netty {:mvn/version "1.83.1"}
-        io.grpc/grpc-protobuf {:mvn/version "1.83.1"}
-        io.grpc/grpc-stub {:mvn/version "1.83.1"}
+        io.grpc/grpc-api {:mvn/version "1.84.2"}
+        io.grpc/grpc-core {:mvn/version "1.84.2"}
+        io.grpc/grpc-netty {:mvn/version "1.84.2"}
+        io.grpc/grpc-protobuf {:mvn/version "1.84.2"}
+        io.grpc/grpc-stub {:mvn/version "1.84.2"}
         ;; Health + reflection services, both of which Knative deployments want.
-        io.grpc/grpc-services {:mvn/version "1.83.1"}
+        io.grpc/grpc-services {:mvn/version "1.84.2"}
 
         io.netty/netty-buffer {:mvn/version "4.2.16.Final"}
         io.netty/netty-codec {:mvn/version "4.2.16.Final"}
@@ -46,8 +49,10 @@
         io.netty/netty-common {:mvn/version "4.2.16.Final"}
         io.netty/netty-handler {:mvn/version "4.2.16.Final"}
         ;; grpc-netty's pom drags these two in at whatever version it was built
-        ;; against (4.2.15 for grpc 1.83.1) — the alignment test caught exactly
-        ;; that on its first run, which is the test's whole job.
+        ;; against — 4.2.15 under grpc 1.83.1, which is how the alignment test
+        ;; earned its keep on its first run. 1.84.2 is built against 4.2.16, so
+        ;; they agree with the block today; pinned anyway, because the next
+        ;; grpc bump is where that stops being true.
         io.netty/netty-codec-socks {:mvn/version "4.2.16.Final"}
         io.netty/netty-handler-proxy {:mvn/version "4.2.16.Final"}
         io.netty/netty-resolver {:mvn/version "4.2.16.Final"}
