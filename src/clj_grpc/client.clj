@@ -7,9 +7,34 @@
   Call shapes, by method type:
     :unary            request -> response (blocking)
     :server-streaming request -> lazy seq of responses (blocking iterator)
-    :client-streaming -> {:send! (fn [msg]) :close! (fn []) :response promise}
-    :bidi             observer-map -> {:send! ... :close! ...}; responses
-                      arrive through the caller's {:on-next ...} map"
+    :client-streaming -> {:send! (fn [msg]) :close! (fn []) :response promise
+                          :ready? :request! :error!}
+    :bidi             observer-map -> {:send! ... :close! ... :ready? ...};
+                      responses arrive through the caller's {:on-next ...} map
+
+  Flow control on the streaming-out shapes, the client mirror of the server's.
+  `send!` returns whether the transport wants more: false means grpc-java is
+  now buffering this call's messages because the peer is not reading them fast
+  enough, and `.onNext` neither blocks nor refuses, so a producer faster than
+  its consumer grows that buffer without bound. `:ready?` asks the same
+  question without sending.
+
+  THE FIRST ANSWER IS OFTEN FALSE AND DOES NOT MEAN BACKPRESSURE: a call's
+  stream is not up at the moment `invoke` returns, and readiness is false
+  until it is. A producer that reads that first false as a signal to stop
+  stalls on its own first message. Wait for :on-ready, or simply send — a
+  reply per request cannot outrun anything, and .onNext never refuses.
+
+  To wait rather than poll, pass :on-ready in the observer map (:bidi) or in
+  opts (:client-streaming); grpc calls it when a full call has drained. THE
+  SAME RULE AS THE SERVER APPLIES: grpc serializes a call's callbacks, so the
+  thread running one must never wait for another. A producer that wants to
+  wait needs its own thread, parked on something :on-ready delivers to.
+
+  Inbound credits, for a :bidi caller that wants to pace what it receives:
+  :inbound-credits n in the observer map stops grpc requesting messages
+  automatically and asks for n, after which `:request!` asks for more. Without
+  it responses arrive as fast as the server sends them."
   (:require [clj-grpc.interceptor :as interceptor]
             [clj-grpc.transport :as transport])
   ;; No Netty type appears here: the NettyChannelBuilder is constructed inside
@@ -17,7 +42,8 @@
   ;; and comes back as the generic ManagedChannelBuilder. See transport.clj.
   (:import [io.grpc CallOptions Channel ClientInterceptor ClientInterceptors
             ManagedChannel ManagedChannelBuilder]
-           [io.grpc.stub ClientCalls StreamObserver]
+           [io.grpc.stub ClientCalls ClientCallStreamObserver
+            ClientResponseObserver StreamObserver]
            [java.util.concurrent TimeUnit]))
 
 (set! *warn-on-reflection* true)
@@ -81,16 +107,37 @@
     deadline-ms    (.withDeadlineAfter (long deadline-ms) TimeUnit/MILLISECONDS)
     wait-for-ready (.withWaitForReady)))
 
-(defn- response-observer ^StreamObserver [{:keys [on-next on-error on-complete]}]
-  (reify StreamObserver
+(defn- response-observer
+  "The caller's callbacks as a grpc observer, and a place to put the request
+  stream. Always a ClientResponseObserver, for two reasons: beforeStart is the
+  only point at which setOnReadyHandler and disableAutoRequestWithInitial may
+  be called — grpc freezes the request stream immediately afterwards, and both
+  then throw — and its argument is the documented way to reach the
+  ClientCallStreamObserver, rather than casting whatever ClientCalls hands
+  back. ClientCalls calls beforeStart from the listener adapter's constructor,
+  before it starts the call and so before it returns, which is why `stream` is
+  always delivered by the time the caller has the map."
+  ^StreamObserver [{:keys [on-next on-error on-complete on-ready inbound-credits]}
+                   stream]
+  (reify ClientResponseObserver
+    (beforeStart [_ rs]
+      (let [^ClientCallStreamObserver rs rs]
+        (deliver stream rs)
+        (when on-ready (.setOnReadyHandler rs ^Runnable on-ready))
+        (when inbound-credits
+          (.disableAutoRequestWithInitial rs (int inbound-credits)))))
     (onNext [_ msg] (when on-next (on-next msg)))
     (onError [_ t] (when on-error (on-error t)))
     (onCompleted [_] (when on-complete (on-complete)))))
 
-(defn- request-observer-map [^StreamObserver req-obs]
-  {:send!  (fn [msg] (.onNext req-obs msg))
-   :close! (fn [] (.onCompleted req-obs))
-   :error! (fn [t] (.onError req-obs t))})
+(defn- request-observer-map
+  "The request side as fns. `send!` answers readiness, as the server's does."
+  [^ClientCallStreamObserver req-obs]
+  {:send!    (fn [msg] (.onNext req-obs msg) (.isReady req-obs))
+   :close!   (fn [] (.onCompleted req-obs))
+   :error!   (fn [t] (.onError req-obs t))
+   :ready?   (fn [] (.isReady req-obs))
+   :request! (fn [n] (.request req-obs (int n)))})
 
 (defn- intercept-channel
   "The channel with per-call interceptors and declared headers in front of
@@ -112,7 +159,13 @@
   opts: :deadline-ms, :wait-for-ready, and per call
     :headers       a map of outgoing headers for this call
     :interceptors  [f-or-ClientInterceptor ...] for this call, outermost
-                   relative to the channel's; see clj-grpc.interceptor"
+                   relative to the channel's; see clj-grpc.interceptor
+    :on-ready      :client-streaming only — the :bidi shape takes it in the
+                   observer map, next to :on-next
+
+  The streaming-in shapes return {:send! :close! :error! :ready? :request!},
+  where send! answers whether the transport wants more; see this namespace's
+  docstring for the whole flow-control contract."
   ([ch method request] (invoke ch method request nil))
   ([ch {:keys [type method-descriptor]} request {:keys [interceptors headers] :as opts}]
    (let [^Channel ch (if (or (seq interceptors) headers)
@@ -129,17 +182,21 @@
 
        :client-streaming
        (let [response (promise)
-             req-obs  (ClientCalls/asyncClientStreamingCall
-                       (.newCall ch md copt)
-                       (response-observer {:on-next #(deliver response %)
-                                           :on-error #(deliver response %)}))]
-         (assoc (request-observer-map req-obs) :response response))
+             stream   (promise)]
+         (ClientCalls/asyncClientStreamingCall
+          (.newCall ch md copt)
+          (response-observer {:on-next  #(deliver response %)
+                              :on-error #(deliver response %)
+                              :on-ready (:on-ready opts)}
+                             stream))
+         (assoc (request-observer-map @stream) :response response))
 
        :bidi
-       (let [req-obs (ClientCalls/asyncBidiStreamingCall
-                      (.newCall ch md copt)
-                      (response-observer request))]
-         (request-observer-map req-obs))))))
+       (let [stream (promise)]
+         (ClientCalls/asyncBidiStreamingCall
+          (.newCall ch md copt)
+          (response-observer request stream))
+         (request-observer-map @stream))))))
 
 (defn client
   "The whole service as a map of fns: {:say-hello (fn [request] ...), ...}."

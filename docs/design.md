@@ -181,9 +181,35 @@ platform owns transport security and h2c is what the ingress speaks.
 Channels take `"host:port"`, `dns:///` targets, or UDS forms; calls come from
 the same methods map — `invoke` per call or `client` for the whole service as
 a map of fns. Blocking shapes block (unary → response, server-streaming →
-seq); streaming-in shapes return `{:send! :close! :error!}` controls plus a
-promise (client-streaming) or deliver into the caller's observer map (bidi).
-Deadlines and wait-for-ready ride per-call opts.
+seq); streaming-in shapes return `{:send! :close! :error! :ready? :request!}`
+controls plus a promise (client-streaming) or deliver into the caller's
+observer map (bidi). Deadlines and wait-for-ready ride per-call opts.
+
+**Flow control, both directions, mirroring the server.** `send!` answers
+whether the transport wants more, `:ready?` asks without sending, and
+`:on-ready` — in the observer map for bidi, in opts for client-streaming,
+since there is no map there to put it in — waits instead of polling, under the
+same rule as the server's: grpc serializes a call's callbacks, so the thread
+running one must not wait for another. A `:bidi` caller that wants to pace
+what it *receives* passes `:inbound-credits n` and asks for more with
+`:request!`.
+
+Reaching any of this needs one specific mechanism. grpc exposes it on
+`ClientCallStreamObserver`, but `ClientCalls` returns the request side typed
+as a plain `StreamObserver` and *freezes* it the moment the call starts —
+`setOnReadyHandler` and `disableAutoRequestWithInitial` both throw
+`IllegalStateException` afterwards, and their messages say to use
+`ClientResponseObserver`. So the client always passes one: its `beforeStart`
+is called from the listener adapter's constructor, before the call starts and
+therefore before `ClientCalls` returns, and its argument is the documented way
+to reach the observer rather than casting the return value. (Verified from
+grpc-java 1.83.1 bytecode, like the ordering facts under Interceptors.)
+
+One hazard that is the API's, not ours: **a call's first `send!` usually
+answers false**, because the stream is not up when `invoke` returns. That is
+not backpressure, and a producer that stops on it stalls on its own first
+message. `flow_control_test` pins the distinction — the first answer need only
+be a boolean; truth is asserted after `:on-ready`.
 
 ## Interceptors
 
