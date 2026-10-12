@@ -37,7 +37,9 @@
                       [a b c] runs a outermost. See clj-grpc.interceptor.
                       invoke's opts take the same key per call.
     :executor         Executor for callbacks, or :direct (same sharp edge as
-                      the server: never block a direct callback)
+                      the server, sharper: every channel in the process shares
+                      one event loop group per transport, so a direct callback
+                      that blocks stalls other channels' I/O too)
     :default-service-config  map, e.g. retry policy (enables retries when set)"
   ^ManagedChannel
   [target {:keys [plaintext transport keepalive idle-timeout-ms
@@ -151,6 +153,13 @@
          methods)))
 
 (defn shutdown
+  "Graceful by default; :grace-ms bounds the drain, then forces.
+
+  Nothing to release beyond the channel: channels share one event loop group
+  per transport for the life of the process, so shutting one down frees no
+  threads and opening the next allocates none. See
+  clj-grpc.impl.netty/shared-channel-groups for why that is the ownership
+  split, and clj-grpc.server/shutdown for the half that does release loops."
   ([ch] (shutdown ch nil))
   ([^ManagedChannel ch {:keys [grace-ms]}]
    (.shutdown ch)

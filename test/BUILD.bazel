@@ -86,6 +86,25 @@ clj_test(
 )
 
 clj_library(
+    name = "event_loops_test_lib",
+    srcs = ["clj_grpc/event_loops_test.clj"],
+    namespaces = ["clj-grpc.event-loops-test"],
+    strip_prefix = "test",
+    deps = TEST_DEPS,
+)
+
+# Who owns the Netty event loop groups: servers release theirs, channels share
+# one per transport. Counts live groups by thread name across several server
+# and channel lifetimes, which is the check that was missing when every group
+# the library created leaked.
+clj_test(
+    name = "event_loops_test",
+    size = "medium",
+    ns = "clj-grpc.event-loops-test",
+    deps = [":event_loops_test_lib"],
+)
+
+clj_library(
     name = "interceptor_test_lib",
     srcs = ["clj_grpc/interceptor_test.clj"],
     namespaces = ["clj-grpc.interceptor-test"],
