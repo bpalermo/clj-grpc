@@ -255,7 +255,10 @@
 
 (defn server
   "Build (without starting) a server. Returns {:server io.grpc.Server
-  :health HealthStatusManager-or-nil :address SocketAddress}."
+  :health HealthStatusManager-or-nil :address SocketAddress}, plus the
+  resources the build owns and `shutdown` releases — the virtual-thread
+  executor when the caller passed none, and the Netty event loop groups,
+  which grpc never shuts down because the builder was handed them."
   [{:keys [services address port transport health reflection executor
            interceptors tls permit-keepalive max-inbound-message-size
            inbound-credits worker-threads initial-flow-control-window]
@@ -265,7 +268,7 @@
         transport (transport/resolve-transport
                    (if (and unix? (nil? transport)) :epoll transport))
         _         (transport/server-channel-type transport unix?) ; eager UDS/nio validation
-        ^ServerBuilder builder
+        {^ServerBuilder builder :builder event-loops :event-loops}
         ((requiring-resolve 'clj-grpc.impl.netty/server-builder)
          addr {:transport transport :unix? unix?
                :permit-keepalive permit-keepalive
@@ -304,6 +307,7 @@
     {:server (.build builder)
      :health health-mgr
      :owned-executor owned-executor
+     :owned-event-loops event-loops
      :address addr}))
 
 (defn start [{:keys [^Server server] :as s}]
@@ -329,9 +333,12 @@
   Without :grace-ms this returns as soon as the listener is closed, with
   in-flight calls still running: fine from a lifecycle that will wait for
   the process, wrong from a shutdown hook, where the JVM halts when the hook
-  returns. clj-grpc.knative/shutdown-hook! sets both."
+  returns. clj-grpc.knative/shutdown-hook! sets both — which also decides how
+  much in-flight work survives the event loops being released, since that
+  happens last and waits only for the loops to fall quiet."
   ([s] (shutdown s nil))
-  ([{:keys [^Server server ^HealthStatusManager health owned-executor] :as s}
+  ([{:keys [^Server server ^HealthStatusManager health owned-executor
+            owned-event-loops] :as s}
     {:keys [grace-ms drain-delay-ms]}]
    (when health (.enterTerminalState health))
    (when (and drain-delay-ms (pos? (long drain-delay-ms)))
@@ -342,6 +349,13 @@
        (.shutdownNow server)))
    (when owned-executor
      (.shutdown ^java.util.concurrent.ExecutorService owned-executor))
+   ;; Last. grpc shuts down only groups it created itself, and this server was
+   ;; built with its own, so without this every server held its boss and worker
+   ;; groups — ~123 epoll descriptors on a 20-core host — for the life of the
+   ;; process, however long ago it stopped serving.
+   (when (seq owned-event-loops)
+     ((requiring-resolve 'clj-grpc.impl.netty/shutdown-event-loops!)
+      owned-event-loops))
    s))
 
 (defn await-termination [{:keys [^Server server]}]

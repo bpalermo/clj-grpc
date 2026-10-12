@@ -81,6 +81,49 @@ alternative pins any JVM that does not end in `System/exit` — every REPL,
 every `clojure -X` — and surfaced exactly that way: tests green, process
 immortal, caught by the plain-clj CI leg on its first run.
 
+**The groups are ours, so releasing them is ours too.** grpc-netty shuts down
+only a group it created itself; one passed to `NettyChannelBuilder` or to
+`NettyServerBuilder`'s boss/worker setters stays running after
+`ManagedChannel.shutdown` or `Server.shutdown`. The library passes its own in
+all three places — it has to, because it forces the channel class for epoll
+and UDS and the two must agree — which makes ownership a decision rather than
+a detail, and it is answered differently on each side:
+
+- **Servers own theirs.** `:worker-threads` sizes a server's worker group, so
+  it cannot be shared, and a server's loops should die with it. The groups
+  ride in the server map next to `:owned-executor` and `shutdown` releases
+  them last, gracefully, after the listener has closed and the executor is
+  down.
+- **Channels share one group per transport**, process-lifetime, which is the
+  shape grpc-netty's own default has (one group behind `SharedResourceHolder`).
+  There is no last-channel-closed moment to release on that the next `channel`
+  call would not immediately invalidate, and the cost of not sharing is
+  measured below. What sharing costs instead: a blocking `:executor :direct`
+  callback now stalls other channels' I/O, documented where that option is.
+
+**What it was costing**, measured on a 20-core host over six channel
+lifetimes against one server — `main` at the time, then the same script with
+the fix:
+
+| | groups after six channels | open fds | after `server/shutdown` |
+|---|---|---|---|
+| before | 3 → **8**, one per channel | 303 → **903** | 8 groups, 900 fds, unchanged |
+| after | **3**, constant | **301**, flat | 1 group, 177 fds |
+
+~120 descriptors per channel, because `EpollIoHandler` opens an epoll, an
+event and a timer fd per loop and a group holds 2 × cores of them. Ten
+channels is `EMFILE` against the usual 1024 limit — the descriptors, not the
+threads, are the part that takes a process down.
+
+Daemon threads are why none of it was visible: nothing leaked in a suite,
+because every JVM still exited. The subtler reason is why `event_loops_test`
+counts **groups and descriptors, never threads**: a group starts its loops
+lazily, one per loop first given work, so each new channel started ~5 more
+threads inside whichever group it used — *identically* whether that group was
+shared or fresh. A thread-count assertion would have passed before the fix.
+Groups are identified by the pool id Netty's `DefaultThreadFactory` writes
+into every thread name.
+
 Unix domain sockets work in both directions (`{:unix path}` /
 `"unix:///path"`), epoll-only, with the socket-path length limit (~108 bytes)
 respected in tests by binding under `/tmp` — hermetic per action in Bazel's
